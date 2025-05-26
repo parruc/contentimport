@@ -61,7 +61,7 @@ class CustomImportContent(ImportContent):
             fti = portal_types.get(portal_type)
             behaviors = list(fti.behaviors)
             if 'plone.versioning' in behaviors:
-                logger.info(f"Disable versioning for {portal_type}")
+                logger.info(u"Disable versioning for {}".format(portal_type))
                 behaviors.remove('plone.versioning')
             fti.behaviors = behaviors
 
@@ -104,8 +104,8 @@ class CustomImportContent(ImportContent):
         if old_portal_id != new_portal_id:
             # This is only relevant for items in the site-root.
             # Most items containers are usually looked up by the uuid of the old parent
-            item["@id"] = item["@id"].replace(f"/{old_portal_id}/", f"/{new_portal_id}/", 1)
-            item["parent"]["@id"] = item["parent"]["@id"].replace(f"/{old_portal_id}", f"/{new_portal_id}", 1)
+            item["@id"] = item["@id"].replace(u"/{}/".format(old_portal_id), u"/{}/".format(new_portal_id), 1)
+            item["parent"]["@id"] = item["parent"]["@id"].replace(u"/{}".format(old_portal_id), u"/{}".format(new_portal_id), 1)
 
         # update constraints
         if item.get("exportimport.constrains"):
@@ -160,7 +160,7 @@ class CustomImportContent(ImportContent):
     def dict_hook_topic(self, item):
         item["@type"] = "Collection"
         if item["parent"]["@type"] == "Topic":
-            logger.info(f"Skipping Subtopic {item['@id']}.")
+            logger.info(u"Skipping Subtopic {}".format(item['@id']))
             return
 
         old_fields = item.get("customViewFields", [])
