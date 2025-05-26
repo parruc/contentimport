@@ -6,7 +6,6 @@ from contentimport.interfaces import IContentimportLayer
 from logging import getLogger
 from pathlib import Path
 from plone import api
-from Products.CMFPlone.utils import get_installer
 from Products.Five import BrowserView
 from zope.interface import alsoProvides
 
@@ -26,17 +25,6 @@ class ImportAll(BrowserView):
 
         portal = api.portal.get()
         alsoProvides(request, IContentimportLayer)
-
-        installer = get_installer(portal)
-        if not installer.is_product_installed("contentimport"):
-            installer.install_product("contentimport")
-
-        # install required addons
-        for addon in DEFAULT_ADDONS:
-            if not installer.is_product_installed(addon):
-                installer.install_product(addon)
-
-        transaction.commit()
         cfg = getConfiguration()
         directory = Path(cfg.clienthome) / "import"
 
