@@ -44,20 +44,12 @@ class ImportAll(BrowserView):
         view = api.content.get_view("import_content", portal, request)
         request.form["form.submitted"] = True
         request.form["commit"] = 500
-        view(server_file="Plone.json", return_json=True)
+        view(server_file="CUE.json", return_json=True)
         transaction.commit()
 
         other_imports = [
-            "relations",
-            "members",
-            "translations",
-            "localroles",
-            "ordering",
-            "defaultpages",
-            "discussion",
-            "portlets",
-            "redirects",
         ]
+
         for name in other_imports:
             view = api.content.get_view(f"import_{name}", portal, request)
             path = Path(directory) / f"export_{name}.json"

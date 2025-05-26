@@ -1,11 +1,18 @@
-from App.config import getConfiguration
-from collective.exportimport.import_content import ImportContent
-from plone import api
-
 import logging
 import json
 import os
 import transaction
+from App.config import getConfiguration
+from collective.exportimport.import_content import ImportContent
+from plone import api
+from persistent.mapping import PersistentMapping
+from plone.namedfile.file import NamedBlobImage
+from plone.uuid.interfaces import IUUIDGenerator
+from plone.tiles.data import ANNOTATIONS_KEY_PREFIX
+from zope.component import getUtility
+from zope.annotation.interfaces import IAnnotations
+from plone.app.textfield.value import RichTextValue
+
 
 logger = logging.getLogger(__name__)
 
@@ -22,43 +29,20 @@ VIEW_MAPPING = {
 }
 
 PORTAL_TYPE_MAPPING = {
-    "Topic": "Collection",
+    "Event": "evento",
+    "strilloevento": "evento"
 }
 
 REVIEW_STATE_MAPPING = {}
 
-VERSIONED_TYPES = [
-    "Document",
-    "News Item",
-    "Event",
-    "Link",
-]
+VERSIONED_TYPES = []
 
 IMPORTED_TYPES = [
-    "ContentPanels",
-    "Collection",
-    "Topic",
-    "Document",
-    "Folder",
-    "Link",
-    "File",
-    "Image",
-    "News Item",
     "Event",
-    "EasyForm",
+    "strilloevento"
 ]
 
-ALLOWED_TYPES = [
-    "Collection",
-    "Document",
-    "Folder",
-    "Link",
-    "File",
-    "Image",
-    "News Item",
-    "Event",
-    "EasyForm",
-]
+ALLOWED_TYPES = []
 
 CUSTOMVIEWFIELDS_MAPPING = {
     "warnings": None,
@@ -115,8 +99,8 @@ class CustomImportContent(ImportContent):
     def global_dict_hook(self, item):
 
         # Adapt this to your site
-        old_portal_id = "Plone"
-        new_portal_id = "Plone"
+        old_portal_id = "CUE"
+        new_portal_id = "centri/crba"
 
         if old_portal_id != new_portal_id:
             # This is only relevant for items in the site-root.
@@ -214,15 +198,42 @@ class CustomImportContent(ImportContent):
         if not item["query"]:
             logger.info("Drop collection without query: %s", item['@id'])
             return
-
         return item
 
     def dict_hook_event(self, item):
+        MAPPED_TILES = {
+            "text": "@eod.tiles.richtext",
+            "geolocation": "@eod.tiles.map"
+        }
+        for src_field, dst_tile in MAPPED_TILES.items():
+            if item.get(src_field):
+                item[dst_tile] = item.pop(src_field)
         # drop empty strings as event_url
         if item.get("event_url", None) == "":
             item.pop("event_url")
         return item
 
+    def dict_hook_strilloevento(self, item):
+        # drop empty strings as event_url
+        if item.get("event_url", None) == "":
+            item.pop("event_url")
+        return item
+
+    def global_obj_hook(self, obj, item):
+        uuidgenerator = getUtility(IUUIDGenerator)
+        tiles = []
+        for field,value in item.items():
+            if field.startswith("@eod.tiles."):
+                tile_id = uuidgenerator()
+                tile_name = u'{}.{}'.format(ANNOTATIONS_KEY_PREFIX, tile_id)
+                if field == "@eod.tiles.richtext":
+                    IAnnotations(obj)[tile_name] = PersistentMapping({'text': RichTextValue(value, 'text/plain', 'text/html')})
+                elif field == "@eod.tiles.map":
+                    IAnnotations(obj)[tile_name] = PersistentMapping({'latitude': value["latitude"],
+                                                                    'longitude': value["longitude"],})
+                tiles.append('{}/{}'.format(field, tile_id))
+        obj.body = tuple(tiles)
+        return obj
 
 def fix_collection_query(query):
     fixed_query = []
