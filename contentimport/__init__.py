@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import pkg_resources
 from pkg_resources import get_distribution, DistributionNotFound
 
