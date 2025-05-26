@@ -2,11 +2,10 @@ import logging
 import json
 import os
 import transaction
+from plone import api
 from App.config import getConfiguration
 from collective.exportimport.import_content import ImportContent
-from plone import api
 from persistent.mapping import PersistentMapping
-from plone.namedfile.file import NamedBlobImage
 from plone.uuid.interfaces import IUUIDGenerator
 from plone.tiles.data import ANNOTATIONS_KEY_PREFIX
 from zope.component import getUtility
