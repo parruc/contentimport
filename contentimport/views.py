@@ -51,14 +51,14 @@ class ImportAll(BrowserView):
         ]
 
         for name in other_imports:
-            view = api.content.get_view(f"import_{name}", portal, request)
-            path = Path(directory) / f"export_{name}.json"
+            view = api.content.get_view("import_{}".format(name), portal, request)
+            path = Path(directory) / "export_{}.json".format(name)
             if path.exists():
                 results = view(jsonfile=path.read_text(), return_json=True)
                 logger.info(results)
                 transaction.commit()
             else:
-                logger.info(f"Missing file: {path}")
+                logger.info(u"Missing file: {}".format(path))
 
         fixers = [table_class_fixer, img_variant_fixer]
         results = fix_html_in_content_fields(fixers=fixers)
@@ -125,7 +125,7 @@ def img_variant_fixer(text, obj=None):
         tag["data-picturevariant"] = variant
 
         classes = tag["class"]
-        new_class = f"picture-variant-{variant}"
+        new_class = u"picture-variant-{}".format(variant)
         if new_class not in classes:
             classes.append(new_class)
             tag["class"] = classes
