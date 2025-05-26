@@ -17,6 +17,6 @@ import collective.exportimport.serializer
 import collective.exportimport.export_content
 import collective.exportimport.export_other
 
-assert(serializer.HAS_AT is False)
-assert(export_content.HAS_AT is False)
-assert(export_other.HAS_AT is False)
+assert(collective.exportimport.serializer.HAS_AT is False)
+assert(collective.exportimport.export_content.HAS_AT is False)
+assert(collective.exportimport.export_other.HAS_AT is False)
