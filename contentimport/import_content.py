@@ -88,7 +88,7 @@ class CustomImportContent(ImportContent):
             data = json.dumps(self.items_without_parent, sort_keys=True, indent=4)
             number = len(self.items_without_parent)
             cfg = getConfiguration()
-            filename = f'content_without_parent_{index}.json'
+            filename = u'content_without_parent_{}.json'.format(index)
             filepath = os.path.join(cfg.clienthome, filename)
             with open(filepath, 'w') as f:
                 f.write(data)
