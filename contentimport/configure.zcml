@@ -39,7 +39,7 @@
 
     <subscriber
         for="zope.interface.Interface"
-        handler="patch_archetypes.patch_has_at_false"
+        handler=".patch_archetypes.patch_has_at_false"
     />
 
 </configure>
