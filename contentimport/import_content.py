@@ -1,14 +1,16 @@
 from App.config import getConfiguration
 from collective.exportimport.import_content import ImportContent
+from unibo.magazine.content.articolo import IArticolo
 from plone import api
-
+import re
 import logging
 import json
 import os
 import transaction
 
 logger = logging.getLogger(__name__)
-
+ARTICLES_IDS_REGEXP = re.compile(r"(/magazine/)archivio/\d{4}")
+COMUNICATI_IDS_REGEXP = re.compile(r"(/magazine/)comunicati-stampa/\d{4}")
 
 # map old to new views
 VIEW_MAPPING = {
@@ -19,6 +21,10 @@ VIEW_MAPPING = {
     "folder_summary_view": "summary_view",
     "folder_tabular_view": "tabular_view",
     "atct_topic_view": "listing_view",
+    "articolo_view": "view",
+    "fotoracconto_view": "view",
+    "file_view": "view",
+
 }
 
 PORTAL_TYPE_MAPPING = {
@@ -27,42 +33,21 @@ PORTAL_TYPE_MAPPING = {
 
 REVIEW_STATE_MAPPING = {}
 
-VERSIONED_TYPES = [
-    "Document",
-    "News Item",
-    "Event",
-    "Link",
-]
+VERSIONED_TYPES = []
 
 IMPORTED_TYPES = [
-    "ContentPanels",
-    "Collection",
-    "Topic",
-    "Document",
-    "Folder",
-    "Link",
-    "File",
-    "Image",
-    "News Item",
-    "Event",
-    "EasyForm",
+    "Articolo",
+    "Comunicato stampa",
 ]
 
-ALLOWED_TYPES = [
-    "Collection",
-    "Document",
-    "Folder",
-    "Link",
-    "File",
-    "Image",
-    "News Item",
-    "Event",
-    "EasyForm",
-]
+ALLOWED_TYPES = []
 
 CUSTOMVIEWFIELDS_MAPPING = {
     "warnings": None,
 }
+
+CHANGE_FIELDS_VALIDATION = {IArticolo: {"dipartimenti": ["required"], "description": ["max_length"]}}
+ORIGINAL_VALIDATIONS = {}
 
 
 class CustomImportContent(ImportContent):
@@ -71,7 +56,33 @@ class CustomImportContent(ImportContent):
 
     DROP_UIDS = []
 
+    def disable_validation(self):
+        for ct, fields_dict in CHANGE_FIELDS_VALIDATION.items():
+            ORIGINAL_VALIDATIONS[ct] = {}
+            for field_name, validations in fields_dict.items():
+                if field_name not in ORIGINAL_VALIDATIONS[ct]:
+                    field = ct[field_name]
+                    ORIGINAL_VALIDATIONS[ct][field_name] = {}
+                for validation in validations:
+                    if validation == "required":
+                        ORIGINAL_VALIDATIONS[ct][field_name][validation] = field.required
+                        field.required = False
+                    elif validation == "max_length":
+                        ORIGINAL_VALIDATIONS[ct][field_name][validation] = field.max_length
+                        field.max_length = None
+    
+    def reenable_validation(self):
+        for ct, fields_dict in ORIGINAL_VALIDATIONS.items():
+            for field_name, validations in fields_dict.items():
+                field = ct[field_name]
+                for validation in validations:
+                    if validation == "required":
+                        field.required = ORIGINAL_VALIDATIONS[ct][field_name][validation]
+                    elif validation == "max_length":
+                        field.max_length = ORIGINAL_VALIDATIONS[ct][field_name][validation]
+
     def start(self):
+        self.disable_validation()
         self.items_without_parent = []
         portal_types = api.portal.get_tool("portal_types")
         for portal_type in VERSIONED_TYPES:
@@ -114,9 +125,13 @@ class CustomImportContent(ImportContent):
 
     def global_dict_hook(self, item):
 
+        if "/bozze/" in item["@id"]:
+            # Skip items in the bozze folder
+            return None
+
         # Adapt this to your site
-        old_portal_id = "Plone"
-        new_portal_id = "Plone"
+        old_portal_id = "magazine"
+        new_portal_id = "magazine"
 
         if old_portal_id != new_portal_id:
             # This is only relevant for items in the site-root.
@@ -163,8 +178,34 @@ class CustomImportContent(ImportContent):
 
         # drop empty creator
         item["creators"] = [i for i in item.get("creators", []) if i]
-
         return item
+
+    def dict_hook_articolo(self, item):
+        # Change path for articles and subobjects
+        item["@id"] = ARTICLES_IDS_REGEXP.sub(r"\1it/articoli", item["@id"])
+        item["parent"]["@id"] = ARTICLES_IDS_REGEXP.sub(r"\1it/articoli", item["parent"]["@id"])
+        return item
+
+    def dict_hook_comunicatostampa(self, item):
+        # Change path for press releases and subobjects
+        item["@id"] = COMUNICATI_IDS_REGEXP.sub(r"\1it/comunicati-stampa", item["@id"])
+        item["parent"]["@id"] = COMUNICATI_IDS_REGEXP.sub(r"\1it/comunicati-stampa", item["parent"]["@id"])
+        return item
+
+    def obj_hook_article(self, obj, item):
+        import pdb; pdb.set_trace()  # fmt: skip
+        tiles = item.pop("tiles", [])
+        created_tiles = []
+        # for tile in tiles:
+            # AGGIUNGEERE LE TILE probabilmente bastano
+            # ANCORA MEGLIO FARE DELLE API DENTRO UNIBO.TILES
+            # "unibo.magazine.richtext",
+            # "unibo.magazine.image",
+            # "unibo.magazine.linkallegati",
+            
+        # obj.content_tiles = "\n".join(created_tiles)
+
+
 
     def create_container(self, item):
         """Override create_container to never create parents"""
@@ -172,55 +213,6 @@ class CustomImportContent(ImportContent):
         self.items_without_parent.append(item)
 
     def dict_hook_folder(self, item):
-        return item
-
-    def dict_hook_topic(self, item):
-        item["@type"] = "Collection"
-        if item["parent"]["@type"] == "Topic":
-            logger.info(f"Skipping Subtopic {item['@id']}.")
-            return
-
-        old_fields = item.get("customViewFields", [])
-        fixed_fields = []
-        for field in old_fields:
-            if field in CUSTOMVIEWFIELDS_MAPPING:
-                if CUSTOMVIEWFIELDS_MAPPING.get(field):
-                    fixed_fields.append(CUSTOMVIEWFIELDS_MAPPING.get(field))
-            else:
-                fixed_fields.append(field)
-        if fixed_fields:
-            item["customViewFields"] = fixed_fields
-
-        item["query"] = fix_collection_query(item.pop("query", []))
-        if not item["query"]:
-            logger.info("Create collection without query: %s", item["@id"])
-
-        return item
-
-    def dict_hook_collection(self, item):
-        old_fields = item.get("customViewFields", [])
-        fixed_fields = []
-        for field in old_fields:
-            if field in CUSTOMVIEWFIELDS_MAPPING:
-                if CUSTOMVIEWFIELDS_MAPPING.get(field):
-                    fixed_fields.append(CUSTOMVIEWFIELDS_MAPPING.get(field))
-            else:
-                fixed_fields.append(field)
-        if fixed_fields:
-            item["customViewFields"] = fixed_fields
-
-        item["query"] = fix_collection_query(item.pop("query", []))
-
-        if not item["query"]:
-            logger.info("Drop collection without query: %s", item['@id'])
-            return
-
-        return item
-
-    def dict_hook_event(self, item):
-        # drop empty strings as event_url
-        if item.get("event_url", None) == "":
-            item.pop("event_url")
         return item
 
 
