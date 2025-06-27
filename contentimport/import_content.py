@@ -193,6 +193,12 @@ class CustomImportContent(ImportContent):
         item["old_url"] = item["@id"]
         item["@id"] = ARTICLES_IDS_REGEXP.sub(r"\1it/articoli", item["@id"])
         item["parent"]["@id"] = ARTICLES_IDS_REGEXP.sub(r"\1it/articoli", item["parent"]["@id"])
+        item["nascondi_immagine"] = not item.get("mostra_immagine", True)
+        if not item["image"]:
+            for tile in item["tiles"]:
+                if tile["old_type"] == "Image":
+                    item["image"] = tile.copy()
+                    break
         return item
 
     def dict_hook_comunicatostampa(self, item):
@@ -215,24 +221,31 @@ class CustomImportContent(ImportContent):
             if tile["old_type"] in ["Link", "inrete"]:
                 link_file_attachments_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.link.ILinkTile", "title": tile["title"], "url": tile["link"]})
             elif tile["old_type"] == "File":
-                file_data = base64.b64decode(tile["file"])
+                file_data = base64.b64decode(tile["data"])
                 blob_file_obj = NamedBlobFile(
                     data=file_data,
                     filename=tile["filename"],
-                    contentType=tile["content_type"]
+                    contentType=tile["content-type"]
                 )
                 link_file_attachments_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.allegato.IAllegatoTile", "title": tile["title"], "file": blob_file_obj})
             elif tile["old_type"] == "Image":
-                image_data = base64.b64decode(tile["image"])
+                image_data = base64.b64decode(tile["data"])
                 blob_image_obj = NamedBlobImage(
                     data=image_data,
                     filename=tile["filename"],
-                    contentType=tile["content_type"]
+                    contentType=tile["content-type"]
                 )
                 if item["old_layout"] == "fotoracconto_view":
-                    fotogallery_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.fotogallery.IFotogallery", "title": tile["title"], "alt_text": tile["title"], "didascalia": tile["description"], "image": blob_image_obj})
+                    fotogallery_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.fotogallery.IFotogallery", 
+                                                           "title": tile["title"],
+                                                           "alt": tile["title"],
+                                                           "caption": tile["description"],
+                                                           "image": blob_image_obj})
                 else:
-                    images_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.image.ISingleImage", "title": tile["title"], "alt": tile["title"], "didascalia": tile["description"], "image": blob_image_obj})
+                    images_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.image.ISingleImage",
+                                                      "alt": tile["title"],
+                                                      "caption": tile["description"],
+                                                      "image": blob_image_obj})
 
         if link_file_attachments_tile["subobjects"]:
             self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.linkallegati", "content_tiles", **link_file_attachments_tile) 
