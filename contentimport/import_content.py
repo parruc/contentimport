@@ -1,12 +1,18 @@
-from App.config import getConfiguration
-from collective.exportimport.import_content import ImportContent
-from unibo.magazine.content.articolo import IArticolo
-from plone import api
+import base64
 import re
 import logging
 import json
 import os
 import transaction
+
+from App.config import getConfiguration
+from collective.exportimport.import_content import ImportContent
+from plone.namedfile.file import NamedBlobFile, NamedBlobImage
+from plone import api
+
+from unibo.magazine.content.articolo import IArticolo
+from unibo.tiles.utils import TilesFactory
+
 
 logger = logging.getLogger(__name__)
 ARTICLES_IDS_REGEXP = re.compile(r"(/magazine/)archivio/\d{4}")
@@ -46,7 +52,7 @@ CUSTOMVIEWFIELDS_MAPPING = {
     "warnings": None,
 }
 
-CHANGE_FIELDS_VALIDATION = {IArticolo: {"dipartimenti": ["required"], "description": ["max_length"]}}
+CHANGE_FIELDS_VALIDATION = {IArticolo: {"dipartimenti": ["required"], "description": ["max_length", "required"], "image": ["required"]}}
 ORIGINAL_VALIDATIONS = {}
 
 
@@ -82,6 +88,7 @@ class CustomImportContent(ImportContent):
                         field.max_length = ORIGINAL_VALIDATIONS[ct][field_name][validation]
 
     def start(self):
+        self.tiles_factory = TilesFactory()
         self.disable_validation()
         self.items_without_parent = []
         portal_types = api.portal.get_tool("portal_types")
@@ -192,20 +199,44 @@ class CustomImportContent(ImportContent):
         item["parent"]["@id"] = COMUNICATI_IDS_REGEXP.sub(r"\1it/comunicati-stampa", item["parent"]["@id"])
         return item
 
-    def obj_hook_article(self, obj, item):
-        import pdb; pdb.set_trace()  # fmt: skip
+    def obj_hook_articolo(self, obj, item):
         tiles = item.pop("tiles", [])
-        created_tiles = []
-        # for tile in tiles:
-            # AGGIUNGEERE LE TILE probabilmente bastano
-            # ANCORA MEGLIO FARE DELLE API DENTRO UNIBO.TILES
-            # "unibo.magazine.richtext",
-            # "unibo.magazine.image",
-            # "unibo.magazine.linkallegati",
-            
-        # obj.content_tiles = "\n".join(created_tiles)
+        article_tiles = []
+        # "tiles": [
+        #         {
+        #             "id": "sultan-qaboss-university", 
+        #             "link": "http://www.squ.edu.om/", 
+        #             "old_type": "inrete", 
+        #             "title": "Sultan Qaboss University"
+        #         }
+        #     ],
 
+        link_file_attachments_tile = {"title": "Allegati", "subobjects": []}
+        fotogallery_tile = {"title": "Galleria fotografica", "subobjects": []}
+        for tile in tiles:
+            if tile["old_type"] in ["Link", "inrete"]:
+                link_file_attachments_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.link.ILinkTile", "title": tile["title"], "url": tile["link"]})
+            elif tile["old_type"] == "File":
+                file_data = base64.b64decode(tile["file"])
+                blob_file_obj = NamedBlobFile(
+                    data=file_data,
+                    filename=tile["filename"],
+                    contentType=tile["content_type"]
+                )
+                link_file_attachments_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.allegato.IAllegatoTile", "title": tile["title"], "file": blob_file_obj})
+            elif tile["old_type"] == "Image":
+                image_data = base64.b64decode(tile["image"])
+                blob_image_obj = NamedBlobImage(
+                    data=image_data,
+                    filename=tile["filename"],
+                    contentType=tile["content_type"]
+                )
+                fotogallery_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.image.ISingleImage", "title": tile["title"], "alt": tile["title"], "didascalia": tile["description"], "image": blob_image_obj})
 
+        if link_file_attachments_tile["subobjects"]:
+            self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.linkallegati", "content_tiles", **link_file_attachments_tile) 
+        if fotogallery_tile["subobjects"]:
+            self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.fotogallery", "content_tiles", **fotogallery_tile)
 
     def create_container(self, item):
         """Override create_container to never create parents"""
