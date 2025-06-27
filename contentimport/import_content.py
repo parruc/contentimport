@@ -15,8 +15,8 @@ from unibo.tiles.utils import TilesFactory
 
 
 logger = logging.getLogger(__name__)
-ARTICLES_IDS_REGEXP = re.compile(r"(/magazine/)archivio/\d{4}")
-COMUNICATI_IDS_REGEXP = re.compile(r"(/magazine/)comunicati-stampa/\d{4}")
+ARTICLES_IDS_REGEXP = re.compile(r"/archivio/\d{4}")
+COMUNICATI_IDS_REGEXP = re.compile(r"/comunicati-stampa/\d{4}")
 
 # map old to new views
 VIEW_MAPPING = {
@@ -191,8 +191,8 @@ class CustomImportContent(ImportContent):
     def dict_hook_articolo(self, item):
         # Change path for articles and subobjects
         item["old_url"] = item["@id"]
-        item["@id"] = ARTICLES_IDS_REGEXP.sub(r"\1it/articoli", item["@id"])
-        item["parent"]["@id"] = ARTICLES_IDS_REGEXP.sub(r"\1it/articoli", item["parent"]["@id"])
+        item["@id"] = ARTICLES_IDS_REGEXP.sub(r"/it/articoli", item["@id"])
+        item["parent"]["@id"] = ARTICLES_IDS_REGEXP.sub(r"/it/articoli", item["parent"]["@id"])
         item["nascondi_immagine"] = not item.get("mostra_immagine", True)
         if not item["image"]:
             for tile in item["tiles"]:
@@ -204,8 +204,8 @@ class CustomImportContent(ImportContent):
     def dict_hook_comunicatostampa(self, item):
         # Change path for press releases and subobjects
         item["old_url"] = item["@id"]
-        item["@id"] = COMUNICATI_IDS_REGEXP.sub(r"\1it/comunicati-stampa", item["@id"])
-        item["parent"]["@id"] = COMUNICATI_IDS_REGEXP.sub(r"\1it/comunicati-stampa", item["parent"]["@id"])
+        item["@id"] = COMUNICATI_IDS_REGEXP.sub(r"/it/comunicati-stampa", item["@id"])
+        item["parent"]["@id"] = COMUNICATI_IDS_REGEXP.sub(r"/it/comunicati-stampa", item["parent"]["@id"])
         return item
 
     def global_obj_hook(self, obj, item):
