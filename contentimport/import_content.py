@@ -166,6 +166,7 @@ class CustomImportContent(ImportContent):
 
         # Layouts...
         if item.get("layout") in VIEW_MAPPING:
+            item["old_layout"] = item["layout"]
             new_view = VIEW_MAPPING[item["layout"]]
             if new_view:
                 item["layout"] = new_view
@@ -189,30 +190,27 @@ class CustomImportContent(ImportContent):
 
     def dict_hook_articolo(self, item):
         # Change path for articles and subobjects
+        item["old_url"] = item["@id"]
         item["@id"] = ARTICLES_IDS_REGEXP.sub(r"\1it/articoli", item["@id"])
         item["parent"]["@id"] = ARTICLES_IDS_REGEXP.sub(r"\1it/articoli", item["parent"]["@id"])
         return item
 
     def dict_hook_comunicatostampa(self, item):
         # Change path for press releases and subobjects
+        item["old_url"] = item["@id"]
         item["@id"] = COMUNICATI_IDS_REGEXP.sub(r"\1it/comunicati-stampa", item["@id"])
         item["parent"]["@id"] = COMUNICATI_IDS_REGEXP.sub(r"\1it/comunicati-stampa", item["parent"]["@id"])
         return item
 
+    def global_obj_hook(self, obj, item):
+        #TODO: Add redirects from old URLs to new ones?
+        return super().global_obj_hook(obj, item)
+
     def obj_hook_articolo(self, obj, item):
         tiles = item.pop("tiles", [])
-        article_tiles = []
-        # "tiles": [
-        #         {
-        #             "id": "sultan-qaboss-university", 
-        #             "link": "http://www.squ.edu.om/", 
-        #             "old_type": "inrete", 
-        #             "title": "Sultan Qaboss University"
-        #         }
-        #     ],
-
         link_file_attachments_tile = {"title": "Allegati", "subobjects": []}
         fotogallery_tile = {"title": "Galleria fotografica", "subobjects": []}
+        images_tile = {"title": "Immagini", "subobjects": []}
         for tile in tiles:
             if tile["old_type"] in ["Link", "inrete"]:
                 link_file_attachments_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.link.ILinkTile", "title": tile["title"], "url": tile["link"]})
@@ -231,12 +229,17 @@ class CustomImportContent(ImportContent):
                     filename=tile["filename"],
                     contentType=tile["content_type"]
                 )
-                fotogallery_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.image.ISingleImage", "title": tile["title"], "alt": tile["title"], "didascalia": tile["description"], "image": blob_image_obj})
+                if item["old_layout"] == "fotoracconto_view":
+                    fotogallery_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.fotogallery.IFotogallery", "title": tile["title"], "alt_text": tile["title"], "didascalia": tile["description"], "image": blob_image_obj})
+                else:
+                    images_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.image.ISingleImage", "title": tile["title"], "alt": tile["title"], "didascalia": tile["description"], "image": blob_image_obj})
 
         if link_file_attachments_tile["subobjects"]:
             self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.linkallegati", "content_tiles", **link_file_attachments_tile) 
         if fotogallery_tile["subobjects"]:
             self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.fotogallery", "content_tiles", **fotogallery_tile)
+        if images_tile["subobjects"]:
+            self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.image", "content_tiles", **images_tile)        
 
     def create_container(self, item):
         """Override create_container to never create parents"""
