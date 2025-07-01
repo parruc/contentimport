@@ -8,6 +8,7 @@ import transaction
 from App.config import getConfiguration
 from collective.exportimport.import_content import ImportContent
 from plone.namedfile.file import NamedBlobFile, NamedBlobImage
+from plone.app.textfield.value import RichTextValue
 from plone import api
 
 from unibo.magazine.content.articolo import IArticolo
@@ -246,6 +247,11 @@ class CustomImportContent(ImportContent):
                                                       "alt": tile["title"],
                                                       "caption": tile["description"],
                                                       "image": blob_image_obj})
+            elif tile["old_type"] == "richtext":
+                if tile.get("text", None) and tile["text"].get("data", None):
+                    text = RichTextValue(tile["text"]["data"], 'text/html', 'text/html')
+                    self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.richtext", "content_tiles", text=text)
+
 
         if link_file_attachments_tile["subobjects"]:
             self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.linkallegati", "content_tiles", **link_file_attachments_tile) 
