@@ -1,19 +1,17 @@
 import base64
-import re
-import logging
 import json
+import logging
 import os
-import transaction
+import re
 
+import transaction
 from App.config import getConfiguration
 from collective.exportimport.import_content import ImportContent
-from plone.namedfile.file import NamedBlobFile, NamedBlobImage
-from plone.app.textfield.value import RichTextValue
 from plone import api
-
+from plone.app.textfield.value import RichTextValue
+from plone.namedfile.file import NamedBlobFile, NamedBlobImage
 from unibo.magazine.content.articolo import IArticolo
 from unibo.tiles.utils import TilesFactory
-
 
 logger = logging.getLogger(__name__)
 ARTICLES_IDS_REGEXP = re.compile(r"/archivio/\d{4}")
@@ -53,7 +51,13 @@ CUSTOMVIEWFIELDS_MAPPING = {
     "warnings": None,
 }
 
-CHANGE_FIELDS_VALIDATION = {IArticolo: {"dipartimenti": ["required"], "description": ["max_length", "required"], "image": ["required"]}}
+CHANGE_FIELDS_VALIDATION = {
+    IArticolo: {
+        "dipartimenti": ["required"],
+        "description": ["max_length", "required"],
+        "image": ["required"]
+    }
+}
 ORIGINAL_VALIDATIONS = {}
 
 
@@ -77,7 +81,7 @@ class CustomImportContent(ImportContent):
                     elif validation == "max_length":
                         ORIGINAL_VALIDATIONS[ct][field_name][validation] = field.max_length
                         field.max_length = None
-    
+
     def reenable_validation(self):
         for ct, fields_dict in ORIGINAL_VALIDATIONS.items():
             for field_name, validations in fields_dict.items():
@@ -210,7 +214,7 @@ class CustomImportContent(ImportContent):
         return item
 
     def global_obj_hook(self, obj, item):
-        #TODO: Add redirects from old URLs to new ones?
+        # TODO: Add redirects from old URLs to new ones?
         return super().global_obj_hook(obj, item)
 
     def obj_hook_articolo(self, obj, item):
@@ -220,7 +224,9 @@ class CustomImportContent(ImportContent):
         images_tile = {"title": "Immagini", "subobjects": []}
         for tile in tiles:
             if tile["old_type"] in ["Link", "inrete"]:
-                link_file_attachments_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.link.ILinkTile", "title": tile["title"], "url": tile["link"]})
+                link = "unibo.magazine.tiles.link.ILinkTile"
+                link_file_attachments_tile["subobjects"].append({"obj_type": link, "title": tile["title"],
+                                                                 "description": "", "url": tile["link"]})
             elif tile["old_type"] == "File":
                 file_data = base64.b64decode(tile["data"])
                 blob_file_obj = NamedBlobFile(
@@ -228,7 +234,9 @@ class CustomImportContent(ImportContent):
                     filename=tile["filename"],
                     contentType=tile["content-type"]
                 )
-                link_file_attachments_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.allegato.IAllegatoTile", "title": tile["title"], "file": blob_file_obj})
+                allegato = "unibo.magazine.tiles.allegato.IAllegatoTile"
+                link_file_attachments_tile["subobjects"].append({"obj_type": allegato, "title": tile["title"],
+                                                                 "description": "", "file": blob_file_obj})
             elif tile["old_type"] == "Image":
                 image_data = base64.b64decode(tile["data"])
                 blob_image_obj = NamedBlobImage(
@@ -237,7 +245,7 @@ class CustomImportContent(ImportContent):
                     contentType=tile["content-type"]
                 )
                 if item["old_layout"] == "fotoracconto_view":
-                    fotogallery_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.fotogallery.IFotogallery", 
+                    fotogallery_tile["subobjects"].append({"obj_type": "unibo.magazine.tiles.fotogallery.IFotogallery",
                                                            "title": tile["title"],
                                                            "alt": tile["title"],
                                                            "caption": tile["description"],
@@ -250,15 +258,18 @@ class CustomImportContent(ImportContent):
             elif tile["old_type"] == "richtext":
                 if tile.get("text", None) and tile["text"].get("data", None):
                     text = RichTextValue(tile["text"]["data"], 'text/html', 'text/html')
-                    self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.richtext", "content_tiles", text=text)
-
+                    self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.richtext",
+                                                   "content_tiles", text=text)
 
         if link_file_attachments_tile["subobjects"]:
-            self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.linkallegati", "content_tiles", **link_file_attachments_tile) 
+            self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.linkallegati",
+                                           "content_tiles", **link_file_attachments_tile)
         if fotogallery_tile["subobjects"]:
-            self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.fotogallery", "content_tiles", **fotogallery_tile)
+            self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.fotogallery",
+                                           "content_tiles", **fotogallery_tile)
         if images_tile["subobjects"]:
-            self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.image", "content_tiles", **images_tile)        
+            self.tiles_factory.create_tile(obj, self.request, "unibo.magazine.image",
+                                           "content_tiles", **images_tile)
 
     def create_container(self, item):
         """Override create_container to never create parents"""
