@@ -195,9 +195,12 @@ class CustomImportContent(ImportContent):
 
     def dict_hook_articolo(self, item):
         # Change path for articles and subobjects
+        path = "/it/articoli"
+        if item.pop("language") == "Inglese":
+            path = "/en/articles"
         item["old_url"] = item["@id"]
-        item["@id"] = ARTICLES_IDS_REGEXP.sub(r"/it/articoli", item["@id"])
-        item["parent"]["@id"] = ARTICLES_IDS_REGEXP.sub(r"/it/articoli", item["parent"]["@id"])
+        item["@id"] = ARTICLES_IDS_REGEXP.sub(path, item["@id"])
+        item["parent"]["@id"] = ARTICLES_IDS_REGEXP.sub(path, item["parent"]["@id"])
         item["nascondi_immagine"] = not item.get("mostra_immagine", True)
         if not item["image"]:
             for tile in item["tiles"]:
