@@ -1,16 +1,17 @@
-from App.config import getConfiguration
-from bs4 import BeautifulSoup
-from collective.exportimport.fix_html import fix_html_in_content_fields
-from collective.exportimport.fix_html import fix_html_in_portlets
-from contentimport.interfaces import IContentimportLayer
 from logging import getLogger
 from pathlib import Path
+
+import transaction
+from App.config import getConfiguration
+from bs4 import BeautifulSoup
+from collective.exportimport.fix_html import (fix_html_in_content_fields,
+                                              fix_html_in_portlets)
 from plone import api
 from Products.CMFPlone.utils import get_installer
 from Products.Five import BrowserView
 from zope.interface import alsoProvides
 
-import transaction
+from contentimport.interfaces import IContentimportLayer
 
 logger = getLogger(__name__)
 
@@ -44,7 +45,7 @@ class ImportAll(BrowserView):
         view = api.content.get_view("import_content", portal, request)
         request.form["form.submitted"] = True
         request.form["commit"] = 500
-        request.form["handle_existing_content"] = "1"
+        request.form["handle_existing_content"] = "0"
         view(server_file="magazine.json", return_json=True)
         transaction.commit()
 

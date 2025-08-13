@@ -53,12 +53,12 @@ CUSTOMVIEWFIELDS_MAPPING = {
 
 CHANGE_FIELDS_VALIDATION = {
     IArticolo: {
-        "dipartimenti": ["required"],
         "description": ["max_length", "required"],
         "image": ["required"]
     }
 }
 ORIGINAL_VALIDATIONS = {}
+VOCABULARIES = {}
 
 
 class CustomImportContent(ImportContent):
@@ -66,6 +66,10 @@ class CustomImportContent(ImportContent):
     DROP_PATHS = []
 
     DROP_UIDS = []
+
+    def get_articles_path_by_language(self, lang):
+        articles = {"it": "articoli", "en": "articles"}
+        return f"/{lang}/{articles[lang]}"
 
     def disable_validation(self):
         for ct, fields_dict in CHANGE_FIELDS_VALIDATION.items():
@@ -82,6 +86,60 @@ class CustomImportContent(ImportContent):
                         ORIGINAL_VALIDATIONS[ct][field_name][validation] = field.max_length
                         field.max_length = None
 
+    def fetch_vocabularies(self):
+
+        for lang in ["it", "en"]:
+            context = api.content.get(path=f"/magazine/{lang}")
+            temi_voc = api.portal.get_vocabulary(name="magazine.temi", context=context)
+            sottotemi_voc = api.portal.get_vocabulary(name="magazine.sottotemi", context=context)
+            rubriche_voc = api.portal.get_vocabulary(name="magazine.rubriche", context=context)
+
+            VOCABULARIES[lang] = {"temi": {b.id: b.UID for b in temi_voc.brains},
+                                  "sottotemi": {b.id: b.UID for b in sottotemi_voc.brains},
+                                  "rubriche": {b.id: b.UID for b in rubriche_voc.brains}}
+
+    def get_tema_uuid(self, item, lang):
+        canale = item.get("canale")
+        if not canale:
+            return
+        if canale in ["in-ateneo", "sport"]:
+            canale = "in-ateneo"
+            if lang == "en":
+                canale = "university-news"
+        elif canale == "innovazione-e-ricerca":
+            canale = "scienze"
+            if lang == "en":
+                canale = "science"
+        elif canale == "incontri-e-iniziative":
+            canale = "eventi"
+            if lang == "en":
+                canale = "events"
+        else:
+            logger.warning(f"Missing tema canale match for {canale}")
+            return
+        return VOCABULARIES[lang]["temi"][canale]
+
+    def get_sottotema_uuid(self, item, lang):
+        canale = item.get("canale")
+        if not canale:
+            return
+        if canale == "sport":
+            canale = "sport-universitario"
+            if lang == "en":
+                canale = "university-sports"
+            return VOCABULARIES[lang]["sottotemi"][canale]
+
+    def get_rubrica_uuid(self, item, lang):
+        old_type = item.get("old_type")
+        if not old_type:
+            return None
+        if old_type == "Fotoracconto":
+            rubrica = "fotoracconti"
+            if lang == "en":
+                rubrica = "photo-stories"
+            return VOCABULARIES[lang]["rubriche"][rubrica]
+        return None
+
     def reenable_validation(self):
         for ct, fields_dict in ORIGINAL_VALIDATIONS.items():
             for field_name, validations in fields_dict.items():
@@ -95,6 +153,7 @@ class CustomImportContent(ImportContent):
     def start(self):
         self.tiles_factory = TilesFactory()
         self.disable_validation()
+        self.fetch_vocabularies()
         self.items_without_parent = []
         portal_types = api.portal.get_tool("portal_types")
         for portal_type in VERSIONED_TYPES:
@@ -118,6 +177,7 @@ class CustomImportContent(ImportContent):
             msg = u"Saved {} items without parent to {}".format(number, filepath)
             logger.info(msg)
             api.portal.show_message(msg, self.request)
+        self.reenable_validation()
 
     def commit_hook(self, added, index):
         msg = u"Committing after {} created items...".format(len(added))
@@ -195,9 +255,20 @@ class CustomImportContent(ImportContent):
 
     def dict_hook_articolo(self, item):
         # Change path for articles and subobjects
-        path = "/it/articoli"
+        lang = "it"
         if item.pop("language") == "Inglese":
-            path = "/en/articles"
+            lang = "en"
+        path = self.get_articles_path_by_language(lang)
+        tema = self.get_tema_uuid(item, lang)
+        if tema:
+            item["tema"] = tema
+        sottotema = self.get_sottotema_uuid(item, lang)
+        if sottotema:
+            item["sottotemi"] = [sottotema, ]
+        rubrica = self.get_rubrica_uuid(item, lang)
+        if rubrica:
+            item["rubrica"] = rubrica
+
         item["old_url"] = item["@id"]
         item["@id"] = ARTICLES_IDS_REGEXP.sub(path, item["@id"])
         item["parent"]["@id"] = ARTICLES_IDS_REGEXP.sub(path, item["parent"]["@id"])
