@@ -12,6 +12,7 @@ from plone.app.textfield.value import RichTextValue
 from plone.namedfile.file import NamedBlobFile, NamedBlobImage
 from unibo.magazine.content.articolo import IArticolo
 from unibo.tiles.utils import TilesFactory
+from z3c.form.interfaces import NOVALUE
 
 logger = logging.getLogger(__name__)
 ARTICLES_IDS_REGEXP = re.compile(r"/archivio/\d{4}")
@@ -101,7 +102,7 @@ class CustomImportContent(ImportContent):
     def get_tema_uuid(self, item, lang):
         canale = item.get("canale")
         if not canale:
-            return
+            return NOVALUE
         if canale in ["in-ateneo", "sport"]:
             canale = "in-ateneo"
             if lang == "en":
@@ -116,29 +117,30 @@ class CustomImportContent(ImportContent):
                 canale = "events"
         else:
             logger.warning(f"Missing tema canale match for {canale}")
-            return
+            return NOVALUE
         return VOCABULARIES[lang]["temi"][canale]
 
     def get_sottotema_uuid(self, item, lang):
         canale = item.get("canale")
         if not canale:
-            return
+            return NOVALUE
         if canale == "sport":
             canale = "sport-universitario"
             if lang == "en":
                 canale = "university-sports"
             return VOCABULARIES[lang]["sottotemi"][canale]
+        return NOVALUE
 
     def get_rubrica_uuid(self, item, lang):
         old_type = item.get("old_type")
         if not old_type:
-            return None
+            return NOVALUE
         if old_type == "Fotoracconto":
             rubrica = "fotoracconti"
             if lang == "en":
                 rubrica = "photo-stories"
             return VOCABULARIES[lang]["rubriche"][rubrica]
-        return None
+        return NOVALUE
 
     def reenable_validation(self):
         for ct, fields_dict in ORIGINAL_VALIDATIONS.items():
@@ -196,11 +198,6 @@ class CustomImportContent(ImportContent):
             logger.info(msg)
 
     def global_dict_hook(self, item):
-
-        if "/bozze/" in item["@id"]:
-            # Skip items in the bozze folder
-            return None
-
         # Adapt this to your site
         old_portal_id = "magazine"
         new_portal_id = "magazine"
