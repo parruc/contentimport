@@ -257,12 +257,18 @@ class CustomImportContent(ImportContent):
         tema = self.get_tema_uuid(item, lang)
         if tema:
             item["tema"] = tema
+        else:
+            item["tema"] = None
         sottotema = self.get_sottotema_uuid(item, lang)
         if sottotema:
             item["sottotemi"] = [sottotema, ]
+        else:
+            item["sottotemi"] = []
         rubrica = self.get_rubrica_uuid(item, lang)
         if rubrica:
             item["rubrica"] = rubrica
+        else:
+            item["rubrica"] = []
 
         item["old_url"] = item["@id"]
         item["@id"] = ARTICLES_IDS_REGEXP.sub(path, item["@id"])
