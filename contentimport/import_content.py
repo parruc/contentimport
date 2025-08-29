@@ -100,9 +100,7 @@ class CustomImportContent(ImportContent):
 
     def get_tema_uuid(self, item, lang):
         canale = item.get("canale")
-        if not canale:
-            return
-        if canale in ["in-ateneo", "sport"]:
+        if not canale or canale in ["in-ateneo", "sport"]:
             canale = "in-ateneo"
             if lang == "en":
                 canale = "university-news"
@@ -115,8 +113,10 @@ class CustomImportContent(ImportContent):
             if lang == "en":
                 canale = "events"
         else:
+            canale = "in-ateneo"
+            if lang == "en":
+                canale = "university-news"
             logger.warning(f"Missing tema canale match for {canale}")
-            return
         return VOCABULARIES[lang]["temi"][canale]
 
     def get_sottotema_uuid(self, item, lang):
@@ -258,17 +258,17 @@ class CustomImportContent(ImportContent):
         if tema:
             item["tema"] = tema
         else:
-            item["tema"] = None
+            item.pop("tema", "")
         sottotema = self.get_sottotema_uuid(item, lang)
         if sottotema:
             item["sottotemi"] = [sottotema, ]
         else:
-            item["sottotemi"] = []
+            item.pop("sottotemi", "")
         rubrica = self.get_rubrica_uuid(item, lang)
         if rubrica:
             item["rubrica"] = rubrica
         else:
-            item["rubrica"] = []
+            item.pop("rubrica", "")
 
         item["old_url"] = item["@id"]
         item["@id"] = ARTICLES_IDS_REGEXP.sub(path, item["@id"])
