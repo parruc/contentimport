@@ -54,7 +54,7 @@ CUSTOMVIEWFIELDS_MAPPING = {
 CHANGE_FIELDS_VALIDATION = {
     IArticolo: {
         "description": ["max_length", "required"],
-        "image": ["required"]
+        "image": ["required", "constraint"],
     }
 }
 ORIGINAL_VALIDATIONS = {}
@@ -85,6 +85,9 @@ class CustomImportContent(ImportContent):
                     elif validation == "max_length":
                         ORIGINAL_VALIDATIONS[ct][field_name][validation] = field.max_length
                         field.max_length = None
+                    elif validation == "constraint":
+                        ORIGINAL_VALIDATIONS[ct][field_name][validation] = field.constraint
+                        field.constraint = lambda value: True
 
     def fetch_vocabularies(self):
 
