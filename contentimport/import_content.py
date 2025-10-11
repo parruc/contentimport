@@ -35,7 +35,6 @@ VERSIONED_TYPES = [
 ]
 
 IMPORTED_TYPES = [
-    "ContentPanels",
     "Collection",
     "Topic",
     "Document",

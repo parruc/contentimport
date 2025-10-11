@@ -37,4 +37,12 @@
       permission="cmf.ManagePortal"
       />
 
+  <browser:page
+      name="import_to_volto"
+      for="*"
+      class=".volto.ImportAll"
+      template="templates/import_all.pt"
+      permission="cmf.ManagePortal"
+      />
+
 </configure>
