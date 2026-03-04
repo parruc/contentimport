@@ -3,6 +3,8 @@ from bs4 import BeautifulSoup
 from collective.exportimport.fix_html import fix_html_in_content_fields
 from collective.exportimport.fix_html import fix_html_in_portlets
 from contentimport.interfaces import IContentimportLayer
+from json import dumps
+from json import loads
 from logging import getLogger
 from pathlib import Path
 from plone import api
@@ -15,6 +17,122 @@ import transaction
 logger = getLogger(__name__)
 
 DEFAULT_ADDONS = []
+IMPORT_FILENAMES = [
+    "scienzaa2voci.json",
+    "Plone.json",
+]
+
+LEGACY_LAYOUT_MAPPING = {
+    "atct_album_view": "album_view",
+    "prettyPhoto_album_view": "album_view",
+    "folder_full_view": "full_view",
+    "folder_listing": "listing_view",
+    "folder_summary_view": "summary_view",
+    "folder_tabular_view": "tabular_view",
+    "atct_topic_view": "listing_view",
+}
+
+DEFAULT_LAYOUT_BY_TYPE = {
+    "Biography": "biography_view",
+    "Biography_container": "search_view",
+    "HomePage": "homepage",
+}
+
+
+def pick_import_file(directory):
+    for filename in IMPORT_FILENAMES:
+        path = Path(directory) / filename
+        if path.exists():
+            return filename
+    return "Plone.json"
+
+
+def normalize_uid_list(values):
+    if not values:
+        return []
+    normalized = []
+    if isinstance(values, str):
+        values = [values]
+    for value in values:
+        if isinstance(value, str):
+            normalized.append(value)
+            continue
+        if not isinstance(value, dict):
+            continue
+        for key in ("UID", "uid", "token", "uuid"):
+            uid = value.get(key)
+            if uid:
+                normalized.append(uid)
+                break
+    return normalized
+
+
+def normalize_person_relations(value):
+    if not value:
+        return []
+    if isinstance(value, str):
+        try:
+            value = loads(value)
+        except Exception:
+            return []
+    if not isinstance(value, list):
+        value = [value]
+    normalized = []
+    for relation in value:
+        if not isinstance(relation, dict):
+            continue
+        relation_type = relation.get("relationsType") or relation.get("relationType") or ""
+        related = relation.get("relatedBiography") or relation.get("related") or relation.get("uid") or ""
+        normalized.append(
+            dumps(
+                {
+                    "relationsType": relation_type,
+                    "relatedBiography": related,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+    return normalized
+
+
+def apply_scienzaa2voci_import_fixes(portal):
+    changed = 0
+    brains = api.content.find(
+        portal_type=["Biography", "Biography_container", "HomePage"],
+    )
+    for brain in brains:
+        obj = brain.getObject()
+        dirty = False
+
+        layout = getattr(obj, "layout", None)
+        if layout in LEGACY_LAYOUT_MAPPING:
+            obj.layout = LEGACY_LAYOUT_MAPPING[layout]
+            dirty = True
+        elif not layout:
+            default_layout = DEFAULT_LAYOUT_BY_TYPE.get(brain.portal_type)
+            if default_layout:
+                obj.layout = default_layout
+                dirty = True
+
+        if brain.portal_type == "HomePage":
+            current = getattr(obj, "biographies", None)
+            fixed = normalize_uid_list(current)
+            if current != fixed:
+                setattr(obj, "biographies", fixed)
+                dirty = True
+
+        if brain.portal_type == "Biography":
+            current = getattr(obj, "personRelations", None)
+            fixed = normalize_person_relations(current)
+            if current != fixed:
+                setattr(obj, "personRelations", fixed)
+                dirty = True
+
+        if dirty:
+            obj.reindexObject()
+            changed += 1
+    return changed
 
 
 class ImportAll(BrowserView):
@@ -44,7 +162,9 @@ class ImportAll(BrowserView):
         view = api.content.get_view("import_content", portal, request)
         request.form["form.submitted"] = True
         request.form["commit"] = 500
-        view(server_file="Plone.json", return_json=True)
+        import_file = pick_import_file(directory)
+        logger.info(f"Using import file: {import_file}")
+        view(server_file=import_file, return_json=True)
         transaction.commit()
 
         other_imports = [
@@ -76,6 +196,11 @@ class ImportAll(BrowserView):
 
         results = fix_html_in_portlets()
         msg = "Fixed html for {} portlets".format(results)
+        logger.info(msg)
+        transaction.commit()
+
+        changed = apply_scienzaa2voci_import_fixes(portal)
+        msg = f"Applied scienzaa2voci post-import fixes to {changed} items"
         logger.info(msg)
         transaction.commit()
 

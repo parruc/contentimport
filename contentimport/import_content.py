@@ -19,10 +19,15 @@ VIEW_MAPPING = {
     "folder_summary_view": "summary_view",
     "folder_tabular_view": "tabular_view",
     "atct_topic_view": "listing_view",
+    "homepage": "homepage",
+    "search_view": "search_view",
+    "gallery_view": "gallery_view",
+    "biography_view": "biography_view",
 }
 
 PORTAL_TYPE_MAPPING = {
     "Topic": "Collection",
+    "ATFolder": "Folder",
 }
 
 REVIEW_STATE_MAPPING = {}
@@ -45,6 +50,9 @@ IMPORTED_TYPES = [
     "News Item",
     "Event",
     "EasyForm",
+    "Biography",
+    "Biography_container",
+    "HomePage",
 ]
 
 ALLOWED_TYPES = [
@@ -57,6 +65,9 @@ ALLOWED_TYPES = [
     "News Item",
     "Event",
     "EasyForm",
+    "Biography",
+    "Biography_container",
+    "HomePage",
 ]
 
 CUSTOMVIEWFIELDS_MAPPING = {
@@ -113,15 +124,20 @@ class CustomImportContent(ImportContent):
 
     def global_dict_hook(self, item):
 
-        # Adapt this to your site
-        old_portal_id = "Plone"
-        new_portal_id = "Plone"
+        new_portal_id = api.portal.get().id
+        old_portal_ids = ["scienzaa2voci"]
 
-        if old_portal_id != new_portal_id:
-            # This is only relevant for items in the site-root.
-            # Most items containers are usually looked up by the uuid of the old parent
-            item["@id"] = item["@id"].replace(f"/{old_portal_id}/", f"/{new_portal_id}/", 1)
-            item["parent"]["@id"] = item["parent"]["@id"].replace(f"/{old_portal_id}", f"/{new_portal_id}", 1)
+        # This is only relevant for items in the site-root.
+        # Most item containers are usually looked up by the uuid of the old parent.
+        for old_portal_id in old_portal_ids:
+            if item.get("@id"):
+                item["@id"] = item["@id"].replace(
+                    f"/{old_portal_id}/", f"/{new_portal_id}/", 1
+                )
+            if item.get("parent", {}).get("@id"):
+                item["parent"]["@id"] = item["parent"]["@id"].replace(
+                    f"/{old_portal_id}", f"/{new_portal_id}", 1
+                )
 
         # update constraints
         if item.get("exportimport.constrains"):
@@ -221,6 +237,60 @@ class CustomImportContent(ImportContent):
         if item.get("event_url", None) == "":
             item.pop("event_url")
         return item
+
+    def dict_hook_homepage(self, item):
+        item["biographies"] = normalize_uid_list(item.get("biographies", []))
+        return item
+
+    def dict_hook_biography(self, item):
+        relations = item.get("personRelations")
+        if relations is not None:
+            item["personRelations"] = normalize_person_relations(relations)
+        return item
+
+
+def normalize_uid_list(values):
+    if not values:
+        return []
+    normalized = []
+    for value in values:
+        if isinstance(value, str):
+            normalized.append(value)
+            continue
+        if not isinstance(value, dict):
+            continue
+        for key in ("UID", "uid", "token", "uuid"):
+            uid = value.get(key)
+            if uid:
+                normalized.append(uid)
+                break
+    return normalized
+
+
+def normalize_person_relations(value):
+    if not value:
+        return []
+    if isinstance(value, list):
+        relations = value
+    else:
+        relations = [value]
+    normalized = []
+    for relation in relations:
+        if not isinstance(relation, dict):
+            continue
+        relation_type = relation.get("relationsType") or relation.get("relationType") or ""
+        related = relation.get("relatedBiography") or relation.get("related") or relation.get("uid") or ""
+        normalized.append(
+            json.dumps(
+                {
+                    "relationsType": relation_type,
+                    "relatedBiography": related,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+    return normalized
 
 
 def fix_collection_query(query):
