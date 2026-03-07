@@ -21,6 +21,8 @@
       directory="profiles/uninstall"
       />
 
+  <adapter factory=".deserializers.AutomaticSummaryFieldDeserializer" />
+
   <browser:page
       name="import_content"
       for="zope.interface.Interface"

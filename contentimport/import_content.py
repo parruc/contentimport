@@ -1,11 +1,11 @@
+import json
+import logging
+import os
+
+import transaction
 from App.config import getConfiguration
 from collective.exportimport.import_content import ImportContent
 from plone import api
-
-import logging
-import json
-import os
-import transaction
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,35 @@ IMPORTED_TYPES = [
     "News Item",
     "Event",
     "EasyForm",
+    # Custom dipartimenti types
+    "HomePage",
+    "Banner",
+    "Channel",
+    "Newsletter",
+    "CorsiStudio",
+    "Events",
+    "AgendaEventi",
+    "AgendaEvento",
+    "AltaFormazione",
+    "Ambito",
+    "Collane",
+    "Contacts",
+    "Dottorati",
+    "GuidaOnline",
+    "LanguageFolder",
+    "Masters",
+    "MediaGallery",
+    "NewsRoom",
+    "OverviewInternazionale",
+    "Personale",
+    "Pubblicazioni",
+    "Ricerca",
+    "ScuoleSpecializzazione",
+    "SiteContainer",
+    "SommarioAmbiti",
+    "StrilloEvento",
+    "StrilloNotizia",
+    "Visiting",
 ]
 
 ALLOWED_TYPES = [
@@ -57,6 +86,34 @@ ALLOWED_TYPES = [
     "News Item",
     "Event",
     "EasyForm",
+    # Custom dipartimenti types
+    "HomePage",
+    "Banner",
+    "Channel",
+    "Newsletter",
+    "CorsiStudio",
+    "AgendaEventi",
+    "AgendaEvento",
+    "AltaFormazione",
+    "Ambito",
+    "Collane",
+    "Contacts",
+    "Dottorati",
+    "GuidaOnline",
+    "LanguageFolder",
+    "Masters",
+    "MediaGallery",
+    "NewsRoom",
+    "OverviewInternazionale",
+    "Personale",
+    "Pubblicazioni",
+    "Ricerca",
+    "ScuoleSpecializzazione",
+    "SiteContainer",
+    "SommarioAmbiti",
+    "StrilloEvento",
+    "StrilloNotizia",
+    "Visiting",
 ]
 
 CUSTOMVIEWFIELDS_MAPPING = {
@@ -71,6 +128,7 @@ class CustomImportContent(ImportContent):
     DROP_UIDS = []
 
     def start(self):
+        self.request.set('_collective_exportimport_importing', True)
         self.items_without_parent = []
         portal_types = api.portal.get_tool("portal_types")
         for portal_type in VERSIONED_TYPES:
@@ -114,8 +172,8 @@ class CustomImportContent(ImportContent):
     def global_dict_hook(self, item):
 
         # Adapt this to your site
-        old_portal_id = "Plone"
-        new_portal_id = "Plone"
+        old_portal_id = "dipartimenti"
+        new_portal_id = "dipartimenti"
 
         if old_portal_id != new_portal_id:
             # This is only relevant for items in the site-root.
