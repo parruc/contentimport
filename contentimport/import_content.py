@@ -221,6 +221,24 @@ class CustomImportContent(ImportContent):
         # drop empty creator
         item["creators"] = [i for i in item.get("creators", []) if i]
 
+        # migrate legacy modifier field
+        legacy_modifier = item.pop("last_modifier", None)
+        if legacy_modifier and not item.get("last_modified_by"):
+            item["last_modified_by"] = legacy_modifier
+
+        # Set language field based on parent LanguageFolder ID
+        # For items inside language folders (e.g., /en/, /it/)
+        if item.get("parent", {}).get("@type") == "LanguageFolder" and not item.get("language"):
+            # Extract language code from parent folder ID
+            parent_id = item.get("parent", {}).get("@id", "")
+            # Parent @id looks like: http://localhost:8080/dipartimenti/bigea/en
+            # Extract the language code (last segment)
+            if parent_id:
+                lang_code = parent_id.rstrip("/").split("/")[-1]
+                # Validate it's a 2-letter language code
+                if lang_code and len(lang_code) == 2 and lang_code.isalpha():
+                    item["language"] = lang_code
+
         return item
 
     def create_container(self, item):
