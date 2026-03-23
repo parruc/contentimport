@@ -27,12 +27,7 @@ PORTAL_TYPE_MAPPING = {
 
 REVIEW_STATE_MAPPING = {}
 
-VERSIONED_TYPES = [
-    "Document",
-    "News Item",
-    "Event",
-    "Link",
-]
+VERSIONED_TYPES = []
 
 IMPORTED_TYPES = [
     "Collection",
