@@ -22,7 +22,7 @@ VIEW_MAPPING = {
 }
 
 PORTAL_TYPE_MAPPING = {
-    "Topic": "Collection",
+    "LanguageFolder": "LRF",
 }
 
 REVIEW_STATE_MAPPING = {}
@@ -30,8 +30,6 @@ REVIEW_STATE_MAPPING = {}
 VERSIONED_TYPES = []
 
 IMPORTED_TYPES = [
-    "Collection",
-    "Topic",
     "Document",
     "Folder",
     "Link",
@@ -56,6 +54,7 @@ IMPORTED_TYPES = [
     "Dottorati",
     "GuidaOnline",
     "LanguageFolder",
+    "LRF",
     "Masters",
     "MediaGallery",
     "NewsRoom",
@@ -96,6 +95,7 @@ ALLOWED_TYPES = [
     "Dottorati",
     "GuidaOnline",
     "LanguageFolder",
+    "LRF",
     "Masters",
     "MediaGallery",
     "NewsRoom",
@@ -122,10 +122,18 @@ class CustomImportContent(ImportContent):
 
     DROP_UIDS = []
 
+    INCLUDE_PATHS = []
+
     def start(self):
+        portal = api.portal.get()
         self.request.set('_collective_exportimport_importing', True)
         self.items_without_parent = []
         portal_types = api.portal.get_tool("portal_types")
+        if 'bigea' in portal:
+            logger.info("Deleting 'bigea")
+            api.content.delete(portal['bigea'], check_linkintegrity=False)
+            transaction.commit()
+            logger.info("Deleted 'bigea")
         for portal_type in VERSIONED_TYPES:
             fti = portal_types.get(portal_type)
             behaviors = list(fti.behaviors)
@@ -166,15 +174,10 @@ class CustomImportContent(ImportContent):
 
     def global_dict_hook(self, item):
 
-        # Adapt this to your site
-        old_portal_id = "dipartimenti"
-        new_portal_id = "dipartimenti"
-
-        if old_portal_id != new_portal_id:
-            # This is only relevant for items in the site-root.
-            # Most items containers are usually looked up by the uuid of the old parent
-            item["@id"] = item["@id"].replace(f"/{old_portal_id}/", f"/{new_portal_id}/", 1)
-            item["parent"]["@id"] = item["parent"]["@id"].replace(f"/{old_portal_id}", f"/{new_portal_id}", 1)
+        if item["@type"] in PORTAL_TYPE_MAPPING:
+            item["@type"] = PORTAL_TYPE_MAPPING[item["@type"]]
+        if "@parent" in item and item["@parent"]["@type"] in PORTAL_TYPE_MAPPING:
+            item["@parent"]["@type"] = PORTAL_TYPE_MAPPING[item["@parent"]["@type"]]
 
         # update constraints
         if item.get("exportimport.constrains"):
@@ -207,12 +210,6 @@ class CustomImportContent(ImportContent):
         if item.get("review_state") in REVIEW_STATE_MAPPING:
             item["review_state"] = REVIEW_STATE_MAPPING[item["review_state"]]
 
-        # Expires before effective
-        effective = item.get('effective', None)
-        expires = item.get('expires', None)
-        if effective and expires and expires <= effective:
-            item.pop('expires')
-
         # drop empty creator
         item["creators"] = [i for i in item.get("creators", []) if i]
 
@@ -229,49 +226,6 @@ class CustomImportContent(ImportContent):
         self.items_without_parent.append(item)
 
     def dict_hook_folder(self, item):
-        return item
-
-    def dict_hook_topic(self, item):
-        item["@type"] = "Collection"
-        if item["parent"]["@type"] == "Topic":
-            logger.info(f"Skipping Subtopic {item['@id']}.")
-            return
-
-        old_fields = item.get("customViewFields", [])
-        fixed_fields = []
-        for field in old_fields:
-            if field in CUSTOMVIEWFIELDS_MAPPING:
-                if CUSTOMVIEWFIELDS_MAPPING.get(field):
-                    fixed_fields.append(CUSTOMVIEWFIELDS_MAPPING.get(field))
-            else:
-                fixed_fields.append(field)
-        if fixed_fields:
-            item["customViewFields"] = fixed_fields
-
-        item["query"] = fix_collection_query(item.pop("query", []))
-        if not item["query"]:
-            logger.info("Create collection without query: %s", item["@id"])
-
-        return item
-
-    def dict_hook_collection(self, item):
-        old_fields = item.get("customViewFields", [])
-        fixed_fields = []
-        for field in old_fields:
-            if field in CUSTOMVIEWFIELDS_MAPPING:
-                if CUSTOMVIEWFIELDS_MAPPING.get(field):
-                    fixed_fields.append(CUSTOMVIEWFIELDS_MAPPING.get(field))
-            else:
-                fixed_fields.append(field)
-        if fixed_fields:
-            item["customViewFields"] = fixed_fields
-
-        item["query"] = fix_collection_query(item.pop("query", []))
-
-        if not item["query"]:
-            logger.info("Drop collection without query: %s", item['@id'])
-            return
-
         return item
 
     def dict_hook_event(self, item):

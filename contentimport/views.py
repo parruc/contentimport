@@ -7,15 +7,14 @@ from bs4 import BeautifulSoup
 from collective.exportimport.fix_html import (fix_html_in_content_fields,
                                               fix_html_in_portlets)
 from plone import api
-from Products.CMFPlone.utils import get_installer
+from plone.app.multilingual.dx.interfaces import IDexterityTranslatable
+from plone.base.interfaces import ILanguage
 from Products.Five import BrowserView
 from zope.interface import alsoProvides
 
 from contentimport.interfaces import IContentimportLayer
 
 logger = getLogger(__name__)
-
-DEFAULT_ADDONS = []
 
 
 class ImportAll(BrowserView):
@@ -28,15 +27,6 @@ class ImportAll(BrowserView):
         portal = api.portal.get()
         alsoProvides(request, IContentimportLayer)
 
-        installer = get_installer(portal)
-        if not installer.is_product_installed("contentimport"):
-            installer.install_product("contentimport")
-
-        # install required addons
-        for addon in DEFAULT_ADDONS:
-            if not installer.is_product_installed(addon):
-                installer.install_product(addon)
-
         transaction.commit()
         cfg = getConfiguration()
         directory = Path(cfg.clienthome) / "import"
@@ -45,9 +35,17 @@ class ImportAll(BrowserView):
         view = api.content.get_view("import_content", portal, request)
         request.form["form.submitted"] = True
         request.form["commit"] = 500
+        request.form["handle_existing_content"] = 0
+        view(server_file="bigea.json", return_json=True)
+        transaction.commit()
 
-        request.form["handle_existing_content"] = 1
-        view(server_file="dipartimenti.json", return_json=True)
+        # collective.exportimport uses _createObjectByType which bypasses the
+        # IObjectAddedEvent subscriber that normally stamps IDexterityTranslatable.
+        # Without this marker ITranslationManager cannot adapt any content object,
+        # so import_translations silently does nothing and the language switch
+        # falls back to the site root.
+        self._fix_translatable_marker(portal)
+        self._fix_content_languages(portal)
         transaction.commit()
 
         other_imports = [
@@ -85,6 +83,66 @@ class ImportAll(BrowserView):
         transaction.commit()
 
         return request.response.redirect(portal.absolute_url())
+
+    def _fix_translatable_marker(self, portal):
+        """Stamp IDexterityTranslatable on every object whose type declares
+        the 'plone.translatable' behavior but is missing the marker (because
+        collective.exportimport bypasses the normal creation pipeline)."""
+        portal_types = api.portal.get_tool("portal_types")
+        translatable_types = {
+            name for name in portal_types.objectIds()
+            if hasattr(portal_types[name], "behaviors")
+            and "plone.translatable" in list(portal_types[name].behaviors)
+        }
+        catalog = api.portal.get_tool("portal_catalog")
+        fixed = 0
+        for brain in catalog.searchResults(
+            path="/".join(portal.getPhysicalPath())
+        ):
+            if brain.portal_type not in translatable_types:
+                continue
+            try:
+                obj = brain.getObject()
+            except Exception:
+                continue
+            if not IDexterityTranslatable.providedBy(obj):
+                alsoProvides(obj, IDexterityTranslatable)
+                obj._p_changed = True
+                fixed += 1
+        logger.info("Stamped IDexterityTranslatable on %d objects", fixed)
+
+    def _fix_content_languages(self, portal):
+        """Set the language attribute on content imported inside LRFs.
+
+        collective.exportimport bypasses PAM's createdEvent subscriber that
+        normally sets obj.language based on the parent LRF.  Without this,
+        brain.Language is always '' and @translations returns items: [].
+        """
+        catalog = api.portal.get_tool("portal_catalog")
+        portal_path = "/".join(portal.getPhysicalPath())
+        fixed = 0
+        for lrf_brain in catalog.searchResults(
+            portal_type="LRF",
+            path=portal_path,
+        ):
+            lrf = lrf_brain.getObject()
+            lrf_lang = ILanguage(lrf).get_language()
+            if not lrf_lang:
+                continue
+            for brain in catalog.searchResults(
+                Language="",
+                path=lrf_brain.getPath(),
+            ):
+                if brain.getPath() == lrf_brain.getPath():
+                    continue
+                try:
+                    obj = brain.getObject()
+                except Exception:
+                    continue
+                ILanguage(obj).set_language(lrf_lang)
+                obj.reindexObject(idxs=["Language"])
+                fixed += 1
+        logger.info("Fixed language attribute on %d objects", fixed)
 
 
 def table_class_fixer(text, obj=None):
@@ -140,3 +198,41 @@ def img_variant_fixer(text, obj=None):
             tag["class"] = classes
 
     return soup.decode()
+
+
+class RepairContentLanguages(BrowserView):
+    """One-off repair view: set language attribute on all content inside LRFs
+    that was imported with an empty language.  Call via:
+      POST /dipartimenti/@@repair-content-languages
+    """
+
+    def __call__(self):
+        portal = api.portal.get()
+        catalog = api.portal.get_tool("portal_catalog")
+        portal_path = "/".join(portal.getPhysicalPath())
+        fixed = 0
+        for lrf_brain in catalog.searchResults(
+            portal_type="LRF",
+            path=portal_path,
+        ):
+            lrf = lrf_brain.getObject()
+            lrf_lang = ILanguage(lrf).get_language()
+            if not lrf_lang:
+                continue
+            for brain in catalog.searchResults(
+                Language="",
+                path=lrf_brain.getPath(),
+            ):
+                if brain.getPath() == lrf_brain.getPath():
+                    continue
+                try:
+                    obj = brain.getObject()
+                except Exception:
+                    continue
+                ILanguage(obj).set_language(lrf_lang)
+                obj.reindexObject(idxs=["Language"])
+                fixed += 1
+        transaction.commit()
+        msg = f"Fixed language attribute on {fixed} objects"
+        logger.info(msg)
+        return msg
