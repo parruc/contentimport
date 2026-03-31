@@ -35,8 +35,8 @@ class ImportAll(BrowserView):
         view = api.content.get_view("import_content", portal, request)
         request.form["form.submitted"] = True
         request.form["commit"] = 500
-        request.form["handle_existing_content"] = 0
-        view(server_file="bigea.json", return_json=True)
+        request.form["handle_existing_content"] = 2  # 0 skip 1 replace 2 update
+        view(server_file="dipartimenti.json", return_json=True)
         transaction.commit()
 
         # collective.exportimport uses _createObjectByType which bypasses the
@@ -44,7 +44,8 @@ class ImportAll(BrowserView):
         # Without this marker ITranslationManager cannot adapt any content object,
         # so import_translations silently does nothing and the language switch
         # falls back to the site root.
-        self._fix_translatable_marker(portal)
+
+        # self._fix_translatable_marker(portal)
         self._fix_content_languages(portal)
         transaction.commit()
 
@@ -125,19 +126,18 @@ class ImportAll(BrowserView):
             portal_type="LRF",
             path=portal_path,
         ):
-            lrf = lrf_brain.getObject()
-            lrf_lang = ILanguage(lrf).get_language()
+            lrf_lang = lrf_brain.getId
             if not lrf_lang:
+                logger.warning(f"LRF {lrf_brain.getPath()} has no id, skipping")
                 continue
             for brain in catalog.searchResults(
                 Language="",
                 path=lrf_brain.getPath(),
             ):
-                if brain.getPath() == lrf_brain.getPath():
-                    continue
                 try:
                     obj = brain.getObject()
                 except Exception:
+                    logger.warning(f"Could not get object for brain {brain.getPath()}, skipping")
                     continue
                 ILanguage(obj).set_language(lrf_lang)
                 obj.reindexObject(idxs=["Language"])
@@ -198,41 +198,3 @@ def img_variant_fixer(text, obj=None):
             tag["class"] = classes
 
     return soup.decode()
-
-
-class RepairContentLanguages(BrowserView):
-    """One-off repair view: set language attribute on all content inside LRFs
-    that was imported with an empty language.  Call via:
-      POST /dipartimenti/@@repair-content-languages
-    """
-
-    def __call__(self):
-        portal = api.portal.get()
-        catalog = api.portal.get_tool("portal_catalog")
-        portal_path = "/".join(portal.getPhysicalPath())
-        fixed = 0
-        for lrf_brain in catalog.searchResults(
-            portal_type="LRF",
-            path=portal_path,
-        ):
-            lrf = lrf_brain.getObject()
-            lrf_lang = ILanguage(lrf).get_language()
-            if not lrf_lang:
-                continue
-            for brain in catalog.searchResults(
-                Language="",
-                path=lrf_brain.getPath(),
-            ):
-                if brain.getPath() == lrf_brain.getPath():
-                    continue
-                try:
-                    obj = brain.getObject()
-                except Exception:
-                    continue
-                ILanguage(obj).set_language(lrf_lang)
-                obj.reindexObject(idxs=["Language"])
-                fixed += 1
-        transaction.commit()
-        msg = f"Fixed language attribute on {fixed} objects"
-        logger.info(msg)
-        return msg

@@ -47,11 +47,4 @@
       permission="cmf.ManagePortal"
       />
 
-  <browser:page
-      name="repair-content-languages"
-      for="*"
-      class=".views.RepairContentLanguages"
-      permission="cmf.ManagePortal"
-      />
-
 </configure>

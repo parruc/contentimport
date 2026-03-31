@@ -6,9 +6,11 @@ import transaction
 from App.config import getConfiguration
 from collective.exportimport.import_content import ImportContent
 from plone import api
+from plone.dexterity.utils import resolveDottedName
+from zope.interface import alsoProvides
 
 logger = logging.getLogger(__name__)
-
+MARKER_INTERFACES_KEY = "exportimport.marker_interfaces"
 
 # map old to new views
 VIEW_MAPPING = {
@@ -125,15 +127,9 @@ class CustomImportContent(ImportContent):
     INCLUDE_PATHS = []
 
     def start(self):
-        portal = api.portal.get()
         self.request.set('_collective_exportimport_importing', True)
         self.items_without_parent = []
         portal_types = api.portal.get_tool("portal_types")
-        if 'bigea' in portal:
-            logger.info("Deleting 'bigea")
-            api.content.delete(portal['bigea'], check_linkintegrity=False)
-            transaction.commit()
-            logger.info("Deleted 'bigea")
         for portal_type in VERSIONED_TYPES:
             fti = portal_types.get(portal_type)
             behaviors = list(fti.behaviors)
@@ -219,6 +215,15 @@ class CustomImportContent(ImportContent):
             item["last_modified_by"] = legacy_modifier
 
         return item
+
+    def global_obj_hook_before_deserializing(self, obj, item):
+        """Apply marker interfaces before deserializing."""
+        for iface_name in item.pop(MARKER_INTERFACES_KEY, []):
+            iface = resolveDottedName(iface_name)
+            if not iface.providedBy(obj):
+                alsoProvides(obj, iface)
+                logger.info("Applied marker interface %s to %s", iface_name, obj.absolute_url())
+        return obj, item
 
     def create_container(self, item):
         """Override create_container to never create parents"""
