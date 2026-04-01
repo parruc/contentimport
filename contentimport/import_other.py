@@ -25,7 +25,7 @@ class ResetLastModifiedBy(BrowserView):
 
 def reset_modifier(obj, path):
     last_modifier = getattr(obj.aq_base, "last_modifier_migrated", None)
-    if last_modifier and last_modifier != obj.last_modified_by:
+    if last_modifier and last_modifier != getattr(obj, "modification_date", None):
         obj.last_modified_by = last_modifier
         del obj.last_modified_by
         obj.reindexObject(idxs=["last_modified_by"])
