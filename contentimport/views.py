@@ -36,7 +36,7 @@ class ImportAll(BrowserView):
         request.form["form.submitted"] = True
         request.form["commit"] = 500
         request.form["handle_existing_content"] = 2  # 0 skip 1 replace 2 update
-        view(server_file="dipartimenti.json", return_json=True)
+        view(server_file="bigea.json", return_json=True)
         transaction.commit()
 
         # collective.exportimport uses _createObjectByType which bypasses the
@@ -81,6 +81,10 @@ class ImportAll(BrowserView):
 
         reset_dates = api.content.get_view("reset_dates", portal, request)
         reset_dates()
+        transaction.commit()
+
+        reset_last_modified_by = api.content.get_view("reset_last_modified_by", portal, request)
+        reset_last_modified_by()
         transaction.commit()
 
         return request.response.redirect(portal.absolute_url())

@@ -47,4 +47,12 @@
       permission="cmf.ManagePortal"
       />
 
+    <browser:page
+      name="reset_last_modified_by"
+      for="zope.interface.Interface"
+      class=".import_other.ResetLastModifiedBy"
+      template="templates/export_other.pt"
+      permission="cmf.ManagePortal"
+      />
+
 </configure>
