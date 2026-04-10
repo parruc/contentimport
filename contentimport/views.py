@@ -7,7 +7,6 @@ from bs4 import BeautifulSoup
 from collective.exportimport.fix_html import (fix_html_in_content_fields,
                                               fix_html_in_portlets)
 from plone import api
-from plone.app.multilingual.dx.interfaces import IDexterityTranslatable
 from plone.base.interfaces import ILanguage
 from Products.Five import BrowserView
 from zope.interface import alsoProvides
@@ -39,13 +38,6 @@ class ImportAll(BrowserView):
         view(server_file="dipartimenti.json", return_json=True)
         transaction.commit()
 
-        # collective.exportimport uses _createObjectByType which bypasses the
-        # IObjectAddedEvent subscriber that normally stamps IDexterityTranslatable.
-        # Without this marker ITranslationManager cannot adapt any content object,
-        # so import_translations silently does nothing and the language switch
-        # falls back to the site root.
-
-        # self._fix_translatable_marker(portal)
         self._fix_content_languages(portal)
         transaction.commit()
 
@@ -88,33 +80,6 @@ class ImportAll(BrowserView):
         transaction.commit()
 
         return request.response.redirect(portal.absolute_url())
-
-    def _fix_translatable_marker(self, portal):
-        """Stamp IDexterityTranslatable on every object whose type declares
-        the 'plone.translatable' behavior but is missing the marker (because
-        collective.exportimport bypasses the normal creation pipeline)."""
-        portal_types = api.portal.get_tool("portal_types")
-        translatable_types = {
-            name for name in portal_types.objectIds()
-            if hasattr(portal_types[name], "behaviors")
-            and "plone.translatable" in list(portal_types[name].behaviors)
-        }
-        catalog = api.portal.get_tool("portal_catalog")
-        fixed = 0
-        for brain in catalog.searchResults(
-            path="/".join(portal.getPhysicalPath())
-        ):
-            if brain.portal_type not in translatable_types:
-                continue
-            try:
-                obj = brain.getObject()
-            except Exception:
-                continue
-            if not IDexterityTranslatable.providedBy(obj):
-                alsoProvides(obj, IDexterityTranslatable)
-                obj._p_changed = True
-                fixed += 1
-        logger.info("Stamped IDexterityTranslatable on %d objects", fixed)
 
     def _fix_content_languages(self, portal):
         """Set the language attribute on content imported inside LRFs.
