@@ -18,6 +18,7 @@ from plone.namedfile.file import NamedBlobFile, NamedBlobImage
 from plone.namedfile.interfaces import INamedBlobImageField, INamedFileField
 from plone.tiles.data import ANNOTATIONS_KEY_PREFIX
 from plone.tiles.interfaces import ITileType
+from unibo.dipartimenti.behaviors.languagefolder import FooterLink, Tag
 from unibo.tiles.browser.multiobject import TileObject
 from zope.annotation.interfaces import IAnnotations
 from zope.component import getUtilitiesFor
@@ -29,6 +30,9 @@ from zope.schema.interfaces import IDate, IDatetime
 logger = logging.getLogger(__name__)
 MARKER_INTERFACES_KEY = "exportimport.marker_interfaces"
 TILES_KEY = "exportimport.tiles_data"
+LRF_TAGS_KEY = "_lrf_tags_pagine_ricerca"
+LRF_LINKS_KEY = "_lrf_footer_links"
+SITE_SOCIALS_KEY = "_site_socials"
 
 # Mapping of old subobject interface dotted names (unibo.tiles.multiobject.*)
 # to the new locations in unibo.dipartimenti.tiles.*
@@ -273,6 +277,30 @@ class CustomImportContent(ImportContent):
         last_modifier = item.get("last_modifier", None)
         if last_modifier:
             obj.last_modifier_migrated = last_modifier
+
+        raw_tags = item.pop(LRF_TAGS_KEY, None)
+        if raw_tags is not None:
+            obj.tags_pagine_ricerca = [
+                Tag(id=t.get('id', ''), description=t.get('description', ''))
+                for t in raw_tags
+                if isinstance(t, dict) and t.get('id')
+            ]
+            logger.info("Imported tags_pagine_ricerca on %s", obj.absolute_url())
+
+        raw_links = item.pop(LRF_LINKS_KEY, None)
+        if raw_links is not None:
+            obj.footer_links = [
+                FooterLink(title=link.get('title', ''), url=link.get('url', ''))
+                for link in raw_links
+                if isinstance(link, dict) and link.get('title') and link.get('url')
+            ]
+            logger.info("Imported footer_links on %s", obj.absolute_url())
+
+        raw_socials = item.pop(SITE_SOCIALS_KEY, None)
+        if raw_socials is not None:
+            obj.socials = [s for s in raw_socials if isinstance(s, str) and s]
+            logger.info("Imported socials on %s", obj.absolute_url())
+
         return obj
 
     def import_tiles(self, obj, item):
@@ -391,6 +419,13 @@ class CustomImportContent(ImportContent):
                     setattr(tileobj, attr, self._parse_datetime(value))
                 elif attr in date_fields:
                     setattr(tileobj, attr, self._parse_date(value))
+                elif isinstance(value, str) and attr == 'socials':
+                    # socials was a JSON string (JsonicField); convert to list of strings
+                    try:
+                        parsed = json.loads(value)
+                    except (ValueError, TypeError):
+                        parsed = []
+                    setattr(tileobj, attr, [s for s in parsed if isinstance(s, str) and s])
                 else:
                     setattr(tileobj, attr, value)
 
@@ -444,6 +479,50 @@ class CustomImportContent(ImportContent):
         """Override create_container to never create parents"""
         # Indead of creating a folder we save all items where this happens in a new json-file
         self.items_without_parent.append(item)
+
+    def dict_hook_sitecontainer(self, item):
+        """Pop socials JSON string and stash it for reconstruction in global_obj_hook."""
+        if 'socials' in item:
+            raw = item.pop('socials')
+            if isinstance(raw, str):
+                try:
+                    raw = json.loads(raw)
+                except (ValueError, TypeError):
+                    logger.warning("Could not parse socials on SiteContainer (ignored): %r", raw)
+                    raw = []
+            item[SITE_SOCIALS_KEY] = raw if isinstance(raw, list) else []
+        return item
+
+    def dict_hook_languagefolder(self, item):
+        """Called for items exported with portal_type 'LanguageFolder' (pre-rename)."""
+        return self._extract_lrf_fields(item)
+
+    def dict_hook_lrf(self, item):
+        """Called for items of portal_type 'LRF'."""
+        return self._extract_lrf_fields(item)
+
+    def _extract_lrf_fields(self, item):
+        """Pop tags_pagine_ricerca and footer_links from the item dict,
+        normalise them to lists of plain dicts, and stash them under
+        private keys so plone.restapi never tries to deserialise them.
+        They are reconstructed as Tag / FooterLink objects in global_obj_hook."""
+        for src_key, stash_key in (
+            ('tags_pagine_ricerca', LRF_TAGS_KEY),
+            ('footer_links', LRF_LINKS_KEY),
+        ):
+            if src_key not in item:
+                continue
+            raw = item.pop(src_key)
+            if isinstance(raw, str):
+                try:
+                    raw = json.loads(raw)
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "Could not parse %s on LRF (ignored): %r", src_key, raw
+                    )
+                    raw = []
+            item[stash_key] = raw if isinstance(raw, list) else []
+        return item
 
     def dict_hook_folder(self, item):
         return item
