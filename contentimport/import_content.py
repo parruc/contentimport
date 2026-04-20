@@ -87,7 +87,6 @@ IMPORTED_TYPES = [
     "File",
     "Image",
     "News Item",
-    "Event",
     "EasyForm",
     # Custom dipartimenti types
     "HomePage",
@@ -95,7 +94,6 @@ IMPORTED_TYPES = [
     "Channel",
     "Newsletter",
     "CorsiStudio",
-    "Events",
     "AgendaEventi",
     "AgendaEvento",
     "AltaFormazione",
@@ -116,7 +114,6 @@ IMPORTED_TYPES = [
     "ScuoleSpecializzazione",
     "SiteContainer",
     "SommarioAmbiti",
-    "StrilloEvento",
     "StrilloNotizia",
     "Visiting",
 ]
@@ -129,7 +126,6 @@ ALLOWED_TYPES = [
     "File",
     "Image",
     "News Item",
-    "Event",
     "EasyForm",
     # Custom dipartimenti types
     "HomePage",
@@ -157,7 +153,6 @@ ALLOWED_TYPES = [
     "ScuoleSpecializzazione",
     "SiteContainer",
     "SommarioAmbiti",
-    "StrilloEvento",
     "StrilloNotizia",
     "Visiting",
 ]
