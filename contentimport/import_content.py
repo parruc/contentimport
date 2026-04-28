@@ -47,8 +47,6 @@ SUBOBJECT_TYPE_MAPPING = {
         "unibo.dipartimenti.tiles.contatto.IContattoDSA",
     "unibo.tiles.multiobject.contatto.IStrutturaDSA":
         "unibo.dipartimenti.tiles.contatto.IStrutturaDSA",
-    "unibo.tiles.multiobject.banners.IBanner":
-        "unibo.dipartimenti.tiles.lancio_ambiti.IBanner",
     "unibo.tiles.multiobject.album.IFotoAlbum":
         "unibo.dipartimenti.tiles.album.IFotoAlbum",
     "unibo.tiles.multiobject.summary_links.ILink":
@@ -87,7 +85,6 @@ IMPORTED_TYPES = [
     "File",
     "Image",
     "News Item",
-    "EasyForm",
     # Custom dipartimenti types
     "HomePage",
     "Banner",
@@ -126,7 +123,6 @@ ALLOWED_TYPES = [
     "File",
     "Image",
     "News Item",
-    "EasyForm",
     # Custom dipartimenti types
     "HomePage",
     "Banner",

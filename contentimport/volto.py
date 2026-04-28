@@ -1,22 +1,23 @@
-from App.config import getConfiguration
-from bs4 import BeautifulSoup
-from collective.exportimport.fix_html import fix_html_in_content_fields
-from collective.exportimport.fix_html import fix_html_in_portlets
-from contentimport.interfaces import IContentimportLayer
 from logging import getLogger
 from pathlib import Path
+
+import requests
+import transaction
+from App.config import getConfiguration
+from bs4 import BeautifulSoup
+from collective.exportimport.fix_html import (fix_html_in_content_fields,
+                                              fix_html_in_portlets)
 from plone import api
+from plone.base.utils import get_installer
 from plone.volto.browser.migrate_to_volto import migrate_richtext_to_blocks
-from plone.volto.setuphandlers import add_behavior
-from plone.volto.setuphandlers import remove_behavior
-from Products.CMFEditions.interfaces.IModifier import FileTooLargeToVersionError
-from Products.CMFPlone.utils import get_installer
+from plone.volto.setuphandlers import add_behavior, remove_behavior
+from Products.CMFEditions.interfaces.IModifier import \
+    FileTooLargeToVersionError
 from Products.Five import BrowserView
 from Products.ZCatalog.ProgressHandler import ZLogHandler
 from zope.interface import alsoProvides
 
-import requests
-import transaction
+from contentimport.interfaces import IContentimportLayer
 
 logger = getLogger(__name__)
 
