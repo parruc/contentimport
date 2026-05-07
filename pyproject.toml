@@ -1,5 +1,5 @@
 [project]
-name = "contentimport.dipartimenti"
+name = "contentimport"
 version = "0.4.dev0"
 description = "Custom import based on collective.exportimport"
 license = "GPL-2.0-only"
