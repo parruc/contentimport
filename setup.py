@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='contentimport.dipartimenti',
-    version='0.3.dev0',
+    version='0.3',
     description='Custom import based on collective.exportimport',
     url='https://github.com/starzel/contentimport',
     author='Philip Bauer',
