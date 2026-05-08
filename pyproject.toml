@@ -1,6 +1,6 @@
 [project]
 name = "contentimport"
-version = "0.6.dev0"
+dynamic = ["version"]
 description = "Custom import based on collective.exportimport"
 license = "GPL-2.0-only"
 requires-python = ">=3.10"
