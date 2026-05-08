@@ -159,7 +159,7 @@ CUSTOMVIEWFIELDS_MAPPING = {
 class CustomImportContent(ImportContent):
 
     DROP_PATHS = []
-
+    items_without_parent = []
     DROP_UIDS = []
 
     INCLUDE_PATHS = []
