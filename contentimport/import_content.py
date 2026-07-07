@@ -1,14 +1,64 @@
+import base64
+import json
+import logging
+import os
+from collections import defaultdict
+from datetime import date, datetime
+
+import transaction
 from App.config import getConfiguration
 from collective.exportimport.import_content import ImportContent
+from persistent.mapping import PersistentMapping
 from plone import api
-
-import logging
-import json
-import os
-import transaction
+from plone.app.textfield.interfaces import IRichText, IRichTextValue
+from plone.app.textfield.value import RichTextValue
+from plone.dexterity.utils import resolveDottedName
+from plone.formwidget.geolocation import Geolocation, GeolocationField
+from plone.namedfile.file import NamedBlobFile, NamedBlobImage
+from plone.namedfile.interfaces import INamedBlobImageField, INamedFileField
+from plone.tiles.data import ANNOTATIONS_KEY_PREFIX
+from plone.tiles.interfaces import ITileType
+from unibo.dipartimenti.behaviors.languagefolder import FooterLink, Tag
+from unibo.tiles.browser.multiobject import TileObject
+from zope.annotation.interfaces import IAnnotations
+from zope.component import getUtilitiesFor
+from zope.dottedname.resolve import resolve
+from zope.interface import alsoProvides
+from zope.schema import getFieldsInOrder
+from zope.schema.interfaces import IDate, IDatetime
 
 logger = logging.getLogger(__name__)
+MARKER_INTERFACES_KEY = "exportimport.marker_interfaces"
+NEWSLETTER_FOLDER_MARKER = "unibo.mailup.interfaces.INewsletterFolder"
+TILES_KEY = "exportimport.tiles_data"
+LRF_TAGS_KEY = "_lrf_tags_pagine_ricerca"
+LRF_LINKS_KEY = "_lrf_footer_links"
+SITE_SOCIALS_KEY = "_site_socials"
 
+# Mapping of old subobject interface dotted names (unibo.tiles.multiobject.*)
+# to the new locations in unibo.dipartimenti.tiles.*
+SUBOBJECT_TYPE_MAPPING = {
+    "unibo.tiles.multiobject.link.ILink":
+        "unibo.dipartimenti.tiles.link.ILink",
+    "unibo.tiles.multiobject.attachment.IAttachment":
+        "unibo.dipartimenti.tiles.attachment.IAttachment",
+    "unibo.tiles.multiobject.contatto.IContatto":
+        "unibo.dipartimenti.tiles.contatto.IContatto",
+    "unibo.tiles.multiobject.contatto.IContattoDSA":
+        "unibo.dipartimenti.tiles.contatto.IContattoDSA",
+    "unibo.tiles.multiobject.contatto.IStrutturaDSA":
+        "unibo.dipartimenti.tiles.contatto.IStrutturaDSA",
+    "unibo.tiles.multiobject.album.IFotoAlbum":
+        "unibo.dipartimenti.tiles.album.IFotoAlbum",
+    "unibo.tiles.multiobject.summary_links.ILink":
+        "unibo.dipartimenti.tiles.summary_links.ILink",
+    "unibo.tiles.multiobject.map_multipoint.IMapPosition":
+        "unibo.dipartimenti.tiles.map_multipoint.IMapPosition",
+    "unibo.tiles.multiobject.video.IVideo":
+        "unibo.dipartimenti.tiles.media_gallery.IVideo",
+    "unibo.tiles.multiobject.image.IImage":
+        "unibo.dipartimenti.tiles.galleria.IImage",
+}
 
 # map old to new views
 VIEW_MAPPING = {
@@ -22,29 +72,48 @@ VIEW_MAPPING = {
 }
 
 PORTAL_TYPE_MAPPING = {
-    "Topic": "Collection",
+    "LanguageFolder": "LRF",
 }
 
 REVIEW_STATE_MAPPING = {}
 
-VERSIONED_TYPES = [
-    "Document",
-    "News Item",
-    "Event",
-    "Link",
-]
+VERSIONED_TYPES = []
 
 IMPORTED_TYPES = [
-    "Collection",
-    "Topic",
     "Document",
     "Folder",
     "Link",
     "File",
     "Image",
     "News Item",
-    "Event",
-    "EasyForm",
+    # Custom dipartimenti types
+    "HomePage",
+    "Banner",
+    "Channel",
+    "Newsletter",
+    "NewsletterFolder",
+    "CorsiStudio",
+    "AgendaEventi",
+    "AgendaEvento",
+    "AltaFormazione",
+    "Ambito",
+    "Collane",
+    "Dottorati",
+    "GuidaOnline",
+    "LanguageFolder",
+    "LRF",
+    "Masters",
+    "MediaGallery",
+    "NewsRoom",
+    "OverviewInternazionale",
+    "Personale",
+    "Pubblicazioni",
+    "Ricerca",
+    "ScuoleSpecializzazione",
+    "SiteContainer",
+    "SommarioAmbiti",
+    "StrilloNotizia",
+    "Visiting",
 ]
 
 ALLOWED_TYPES = [
@@ -55,8 +124,34 @@ ALLOWED_TYPES = [
     "File",
     "Image",
     "News Item",
-    "Event",
-    "EasyForm",
+    # Custom dipartimenti types
+    "HomePage",
+    "Banner",
+    "Channel",
+    "Newsletter",
+    "NewsletterFolder",
+    "CorsiStudio",
+    "AgendaEventi",
+    "AgendaEvento",
+    "AltaFormazione",
+    "Ambito",
+    "Collane",
+    "Dottorati",
+    "GuidaOnline",
+    "LanguageFolder",
+    "LRF",
+    "Masters",
+    "MediaGallery",
+    "NewsRoom",
+    "OverviewInternazionale",
+    "Personale",
+    "Pubblicazioni",
+    "Ricerca",
+    "ScuoleSpecializzazione",
+    "SiteContainer",
+    "SommarioAmbiti",
+    "StrilloNotizia",
+    "Visiting",
 ]
 
 CUSTOMVIEWFIELDS_MAPPING = {
@@ -67,10 +162,13 @@ CUSTOMVIEWFIELDS_MAPPING = {
 class CustomImportContent(ImportContent):
 
     DROP_PATHS = []
-
+    items_without_parent = []
     DROP_UIDS = []
 
+    INCLUDE_PATHS = []
+
     def start(self):
+        self.request.set('_collective_exportimport_importing', True)
         self.items_without_parent = []
         portal_types = api.portal.get_tool("portal_types")
         for portal_type in VERSIONED_TYPES:
@@ -113,15 +211,18 @@ class CustomImportContent(ImportContent):
 
     def global_dict_hook(self, item):
 
-        # Adapt this to your site
-        old_portal_id = "Plone"
-        new_portal_id = "Plone"
+        # Folder marked INewsletterFolder -> NewsletterFolder CT
+        markers = item.get(MARKER_INTERFACES_KEY) or []
+        if item["@type"] == "Folder" and NEWSLETTER_FOLDER_MARKER in markers:
+            item["@type"] = "NewsletterFolder"
+            item[MARKER_INTERFACES_KEY] = [m for m in markers if m != NEWSLETTER_FOLDER_MARKER]
+            # the FTI filters to Newsletter; old per-folder constrains are obsolete
+            item.pop("exportimport.constrains", None)
 
-        if old_portal_id != new_portal_id:
-            # This is only relevant for items in the site-root.
-            # Most items containers are usually looked up by the uuid of the old parent
-            item["@id"] = item["@id"].replace(f"/{old_portal_id}/", f"/{new_portal_id}/", 1)
-            item["parent"]["@id"] = item["parent"]["@id"].replace(f"/{old_portal_id}", f"/{new_portal_id}", 1)
+        if item["@type"] in PORTAL_TYPE_MAPPING:
+            item["@type"] = PORTAL_TYPE_MAPPING[item["@type"]]
+        if "@parent" in item and item["@parent"]["@type"] in PORTAL_TYPE_MAPPING:
+            item["@parent"]["@type"] = PORTAL_TYPE_MAPPING[item["@parent"]["@type"]]
 
         # update constraints
         if item.get("exportimport.constrains"):
@@ -154,66 +255,276 @@ class CustomImportContent(ImportContent):
         if item.get("review_state") in REVIEW_STATE_MAPPING:
             item["review_state"] = REVIEW_STATE_MAPPING[item["review_state"]]
 
-        # Expires before effective
-        effective = item.get('effective', None)
-        expires = item.get('expires', None)
-        if effective and expires and expires <= effective:
-            item.pop('expires')
-
         # drop empty creator
         item["creators"] = [i for i in item.get("creators", []) if i]
 
         return item
+
+    def global_obj_hook_before_deserializing(self, obj, item):
+        """Apply marker interfaces before deserializing."""
+        for iface_name in item.pop(MARKER_INTERFACES_KEY, []):
+            iface = resolveDottedName(iface_name)
+            if not iface.providedBy(obj):
+                alsoProvides(obj, iface)
+                logger.info("Applied marker interface %s to %s", iface_name, obj.absolute_url())
+        return obj, item
+
+    def global_obj_hook(self, obj, item):
+        """Import tiles annotation data after the object has been deserialized."""
+        if item.get(TILES_KEY):
+            self.import_tiles(obj, item)
+
+        last_modifier = item.get("last_modifier", None)
+        if last_modifier:
+            obj.last_modifier_migrated = last_modifier
+
+        raw_tags = item.pop(LRF_TAGS_KEY, None)
+        if raw_tags is not None:
+            obj.tags_pagine_ricerca = [
+                Tag(id=t.get('id', ''), description=t.get('description', ''))
+                for t in raw_tags
+                if isinstance(t, dict) and t.get('id')
+            ]
+            logger.info("Imported tags_pagine_ricerca on %s", obj.absolute_url())
+
+        raw_links = item.pop(LRF_LINKS_KEY, None)
+        if raw_links is not None:
+            obj.footer_links = [
+                FooterLink(title=link.get('title', ''), url=link.get('url', ''))
+                for link in raw_links
+                if isinstance(link, dict) and link.get('title') and link.get('url')
+            ]
+            logger.info("Imported footer_links on %s", obj.absolute_url())
+
+        raw_socials = item.pop(SITE_SOCIALS_KEY, None)
+        if raw_socials is not None:
+            obj.socials = [s for s in raw_socials if isinstance(s, str) and s]
+            logger.info("Imported socials on %s", obj.absolute_url())
+
+        return obj
+
+    def import_tiles(self, obj, item):
+        """Restore tile annotation data onto the content object."""
+
+        tiles_data = item.pop(TILES_KEY, {})
+        if not tiles_data:
+            return
+
+        annotations = IAnnotations(obj, None)
+        if annotations is None:
+            return
+
+        # Build field-type sets per tile type name, once for all tiles
+        richtext_fields = defaultdict(set)
+        image_fields = defaultdict(set)
+        file_fields = defaultdict(set)
+        datetime_fields = defaultdict(set)
+        date_fields = defaultdict(set)
+        for tile_name, tile_type_util in getUtilitiesFor(ITileType):
+            if not tile_type_util.schema:
+                continue
+            for fname, fld in getFieldsInOrder(tile_type_util.schema):
+                if IRichText.providedBy(fld):
+                    richtext_fields[tile_name].add(fname)
+                elif INamedBlobImageField.providedBy(fld):
+                    image_fields[tile_name].add(fname)
+                elif INamedFileField.providedBy(fld):
+                    file_fields[tile_name].add(fname)
+                elif IDatetime.providedBy(fld):
+                    datetime_fields[tile_name].add(fname)
+                elif IDate.providedBy(fld):
+                    date_fields[tile_name].add(fname)
+
+        for tile_id, tile_data in tiles_data.items():
+            tile_type_name = tile_data.pop("__tile_type__", None)
+            annotation_key = "{}.{}".format(ANNOTATIONS_KEY_PREFIX, tile_id)
+
+            restored = {}
+            for key, value in tile_data.items():
+                if key == "objects_dict":
+                    restored[key] = self._import_objects_dict(value, obj)
+                elif key in richtext_fields.get(tile_type_name, set()):
+                    if value is not None and not IRichTextValue.providedBy(value):
+                        restored[key] = RichTextValue(value, "text/html", "text/x-html-safe")
+                    else:
+                        restored[key] = value
+                elif key in image_fields.get(tile_type_name, set()):
+                    restored[key] = self._restore_blob(value, NamedBlobImage, tile_id)
+                elif key in file_fields.get(tile_type_name, set()):
+                    restored[key] = self._restore_blob(value, NamedBlobFile, tile_id)
+                elif key in datetime_fields.get(tile_type_name, set()):
+                    restored[key] = self._parse_datetime(value)
+                elif key in date_fields.get(tile_type_name, set()):
+                    restored[key] = self._parse_date(value)
+                else:
+                    restored[key] = value
+
+            annotations[annotation_key] = PersistentMapping(restored)
+
+    def _import_objects_dict(self, objects_data, obj):
+        """Reconstruct a PersistentMapping of TileObject instances."""
+        result = PersistentMapping()
+        for uid, obj_data in (objects_data or {}).items():
+            tileobj = TileObject()
+            tileobj.obj_uid = uid  # uid == obj_uid is an invariant; set it first as a guarantee
+
+            # Map old obj_type to the new dotted name
+            old_obj_type = obj_data.get("obj_type", "") or ""
+            new_obj_type = SUBOBJECT_TYPE_MAPPING.get(old_obj_type, old_obj_type)
+
+            # Build field-type sets from the new subobject schema
+            richtext_fields = set()
+            image_fields = set()
+            file_fields = set()
+            geo_fields = set()
+            datetime_fields = set()
+            date_fields = set()
+            if new_obj_type:
+                try:
+                    sub_schema = resolve(new_obj_type)
+                    for fname, fld in getFieldsInOrder(sub_schema):
+                        if IRichText.providedBy(fld):
+                            richtext_fields.add(fname)
+                        elif INamedBlobImageField.providedBy(fld):
+                            image_fields.add(fname)
+                        elif INamedFileField.providedBy(fld):
+                            file_fields.add(fname)
+                        elif GeolocationField is not None and isinstance(fld, GeolocationField):
+                            geo_fields.add(fname)
+                        elif IDatetime.providedBy(fld):
+                            datetime_fields.add(fname)
+                        elif IDate.providedBy(fld):
+                            date_fields.add(fname)
+                except Exception:
+                    logger.exception("Could not resolve subobject schema %s", new_obj_type)
+
+            for attr, value in obj_data.items():
+                if attr == "obj_type":
+                    setattr(tileobj, "obj_type", new_obj_type)
+                elif attr in richtext_fields:
+                    if value is not None and not IRichTextValue.providedBy(value):
+                        setattr(tileobj, attr, RichTextValue(value, "text/html", "text/x-html-safe"))
+                    else:
+                        setattr(tileobj, attr, value)
+                elif attr in image_fields:
+                    setattr(tileobj, attr, self._restore_blob(value, NamedBlobImage, uid))
+                elif attr in file_fields:
+                    setattr(tileobj, attr, self._restore_blob(value, NamedBlobFile, uid))
+                elif attr in geo_fields and Geolocation is not None:
+                    if isinstance(value, dict):
+                        setattr(tileobj, attr, Geolocation(value.get("latitude", 0), value.get("longitude", 0)))
+                    else:
+                        setattr(tileobj, attr, value)
+                elif attr in datetime_fields:
+                    setattr(tileobj, attr, self._parse_datetime(value))
+                elif attr in date_fields:
+                    setattr(tileobj, attr, self._parse_date(value))
+                elif isinstance(value, str) and attr == 'socials':
+                    # socials was a JSON string (JsonicField); convert to list of strings
+                    try:
+                        parsed = json.loads(value)
+                    except (ValueError, TypeError):
+                        parsed = []
+                    setattr(tileobj, attr, [s for s in parsed if isinstance(s, str) and s])
+                else:
+                    setattr(tileobj, attr, value)
+
+            result[uid] = tileobj
+        return result
+
+    def _parse_datetime(self, value):
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value
+        try:
+            return datetime.fromisoformat(str(value))
+        except (ValueError, TypeError):
+            logger.warning("Could not parse datetime value: %r", value)
+            return None
+
+    def _parse_date(self, value):
+        if not value:
+            return None
+        if isinstance(value, date):
+            return value
+        try:
+            return date.fromisoformat(str(value)[:10])
+        except (ValueError, TypeError):
+            logger.warning("Could not parse date value: %r", value)
+            return None
+
+    def _restore_blob(self, data, klass, context_info=""):
+        """Restore a NamedBlobImage or NamedBlobFile from base64-encoded export data."""
+        if not data or not isinstance(data, dict):
+            return None
+        raw_b64 = data.get("data")
+        if not raw_b64:
+            logger.info("No blob data found for %s, skipping", context_info)
+            return None
+        try:
+            blobdata = base64.b64decode(raw_b64)
+        except Exception:
+            logger.exception("Could not decode blob data for %s", context_info)
+            return None
+        filename = data.get("filename", "")
+        content_type = data.get("content-type", "")
+        return klass(
+            data=blobdata,
+            contentType=content_type,
+            filename=filename,
+        )
 
     def create_container(self, item):
         """Override create_container to never create parents"""
         # Indead of creating a folder we save all items where this happens in a new json-file
         self.items_without_parent.append(item)
 
+    def dict_hook_sitecontainer(self, item):
+        """Pop socials JSON string and stash it for reconstruction in global_obj_hook."""
+        if 'socials' in item:
+            raw = item.pop('socials')
+            if isinstance(raw, str):
+                try:
+                    raw = json.loads(raw)
+                except (ValueError, TypeError):
+                    logger.warning("Could not parse socials on SiteContainer (ignored): %r", raw)
+                    raw = []
+            item[SITE_SOCIALS_KEY] = raw if isinstance(raw, list) else []
+        return item
+
+    def dict_hook_languagefolder(self, item):
+        """Called for items exported with portal_type 'LanguageFolder' (pre-rename)."""
+        return self._extract_lrf_fields(item)
+
+    def dict_hook_lrf(self, item):
+        """Called for items of portal_type 'LRF'."""
+        return self._extract_lrf_fields(item)
+
+    def _extract_lrf_fields(self, item):
+        """Pop tags_pagine_ricerca and footer_links from the item dict,
+        normalise them to lists of plain dicts, and stash them under
+        private keys so plone.restapi never tries to deserialise them.
+        They are reconstructed as Tag / FooterLink objects in global_obj_hook."""
+        for src_key, stash_key in (
+            ('tags_pagine_ricerca', LRF_TAGS_KEY),
+            ('footer_links', LRF_LINKS_KEY),
+        ):
+            if src_key not in item:
+                continue
+            raw = item.pop(src_key)
+            if isinstance(raw, str):
+                try:
+                    raw = json.loads(raw)
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "Could not parse %s on LRF (ignored): %r", src_key, raw
+                    )
+                    raw = []
+            item[stash_key] = raw if isinstance(raw, list) else []
+        return item
+
     def dict_hook_folder(self, item):
-        return item
-
-    def dict_hook_topic(self, item):
-        item["@type"] = "Collection"
-        if item["parent"]["@type"] == "Topic":
-            logger.info(f"Skipping Subtopic {item['@id']}.")
-            return
-
-        old_fields = item.get("customViewFields", [])
-        fixed_fields = []
-        for field in old_fields:
-            if field in CUSTOMVIEWFIELDS_MAPPING:
-                if CUSTOMVIEWFIELDS_MAPPING.get(field):
-                    fixed_fields.append(CUSTOMVIEWFIELDS_MAPPING.get(field))
-            else:
-                fixed_fields.append(field)
-        if fixed_fields:
-            item["customViewFields"] = fixed_fields
-
-        item["query"] = fix_collection_query(item.pop("query", []))
-        if not item["query"]:
-            logger.info("Create collection without query: %s", item["@id"])
-
-        return item
-
-    def dict_hook_collection(self, item):
-        old_fields = item.get("customViewFields", [])
-        fixed_fields = []
-        for field in old_fields:
-            if field in CUSTOMVIEWFIELDS_MAPPING:
-                if CUSTOMVIEWFIELDS_MAPPING.get(field):
-                    fixed_fields.append(CUSTOMVIEWFIELDS_MAPPING.get(field))
-            else:
-                fixed_fields.append(field)
-        if fixed_fields:
-            item["customViewFields"] = fixed_fields
-
-        item["query"] = fix_collection_query(item.pop("query", []))
-
-        if not item["query"]:
-            logger.info("Drop collection without query: %s", item['@id'])
-            return
-
         return item
 
     def dict_hook_event(self, item):

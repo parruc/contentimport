@@ -21,6 +21,8 @@
       directory="profiles/uninstall"
       />
 
+  <adapter factory=".deserializers.AutomaticSummaryFieldDeserializer" />
+
   <browser:page
       name="import_content"
       for="zope.interface.Interface"
@@ -42,6 +44,14 @@
       for="*"
       class=".volto.ImportAll"
       template="templates/import_all.pt"
+      permission="cmf.ManagePortal"
+      />
+
+    <browser:page
+      name="reset_last_modified_by"
+      for="zope.interface.Interface"
+      class=".import_other.ResetLastModifiedBy"
+      template="templates/export_other.pt"
       permission="cmf.ManagePortal"
       />
 

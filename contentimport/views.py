@@ -1,20 +1,19 @@
-from App.config import getConfiguration
-from bs4 import BeautifulSoup
-from collective.exportimport.fix_html import fix_html_in_content_fields
-from collective.exportimport.fix_html import fix_html_in_portlets
-from contentimport.interfaces import IContentimportLayer
 from logging import getLogger
 from pathlib import Path
+
+import transaction
+from App.config import getConfiguration
+from bs4 import BeautifulSoup
+from collective.exportimport.fix_html import (fix_html_in_content_fields,
+                                              fix_html_in_portlets)
 from plone import api
-from Products.CMFPlone.utils import get_installer
+from plone.base.interfaces import ILanguage
 from Products.Five import BrowserView
 from zope.interface import alsoProvides
 
-import transaction
+from contentimport.interfaces import IContentimportLayer
 
 logger = getLogger(__name__)
-
-DEFAULT_ADDONS = []
 
 
 class ImportAll(BrowserView):
@@ -27,15 +26,6 @@ class ImportAll(BrowserView):
         portal = api.portal.get()
         alsoProvides(request, IContentimportLayer)
 
-        installer = get_installer(portal)
-        if not installer.is_product_installed("contentimport"):
-            installer.install_product("contentimport")
-
-        # install required addons
-        for addon in DEFAULT_ADDONS:
-            if not installer.is_product_installed(addon):
-                installer.install_product(addon)
-
         transaction.commit()
         cfg = getConfiguration()
         directory = Path(cfg.clienthome) / "import"
@@ -44,7 +34,11 @@ class ImportAll(BrowserView):
         view = api.content.get_view("import_content", portal, request)
         request.form["form.submitted"] = True
         request.form["commit"] = 500
-        view(server_file="Plone.json", return_json=True)
+        request.form["handle_existing_content"] = 2  # 0 skip 1 replace 2 update
+        view(server_file="dipartimenti.json", return_json=True)
+        transaction.commit()
+
+        self._fix_content_languages(portal)
         transaction.commit()
 
         other_imports = [
@@ -54,8 +48,6 @@ class ImportAll(BrowserView):
             "localroles",
             "ordering",
             "defaultpages",
-            "discussion",
-            "portlets",
             "redirects",
         ]
         for name in other_imports:
@@ -83,7 +75,43 @@ class ImportAll(BrowserView):
         reset_dates()
         transaction.commit()
 
+        reset_last_modified_by = api.content.get_view("reset_last_modified_by", portal, request)
+        reset_last_modified_by()
+        transaction.commit()
+
         return request.response.redirect(portal.absolute_url())
+
+    def _fix_content_languages(self, portal):
+        """Set the language attribute on content imported inside LRFs.
+
+        collective.exportimport bypasses PAM's createdEvent subscriber that
+        normally sets obj.language based on the parent LRF.  Without this,
+        brain.Language is always '' and @translations returns items: [].
+        """
+        catalog = api.portal.get_tool("portal_catalog")
+        portal_path = "/".join(portal.getPhysicalPath())
+        fixed = 0
+        for lrf_brain in catalog.searchResults(
+            portal_type="LRF",
+            path=portal_path,
+        ):
+            lrf_lang = lrf_brain.getId
+            if not lrf_lang:
+                logger.warning(f"LRF {lrf_brain.getPath()} has no id, skipping")
+                continue
+            for brain in catalog.searchResults(
+                Language="",
+                path=lrf_brain.getPath(),
+            ):
+                try:
+                    obj = brain.getObject()
+                except Exception:
+                    logger.warning(f"Could not get object for brain {brain.getPath()}, skipping")
+                    continue
+                ILanguage(obj).set_language(lrf_lang)
+                obj.reindexObject(idxs=["Language"])
+                fixed += 1
+        logger.info("Fixed language attribute on %d objects", fixed)
 
 
 def table_class_fixer(text, obj=None):
