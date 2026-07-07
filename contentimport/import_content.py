@@ -29,6 +29,7 @@ from zope.schema.interfaces import IDate, IDatetime
 
 logger = logging.getLogger(__name__)
 MARKER_INTERFACES_KEY = "exportimport.marker_interfaces"
+NEWSLETTER_FOLDER_MARKER = "unibo.mailup.interfaces.INewsletterFolder"
 TILES_KEY = "exportimport.tiles_data"
 LRF_TAGS_KEY = "_lrf_tags_pagine_ricerca"
 LRF_LINKS_KEY = "_lrf_footer_links"
@@ -90,6 +91,7 @@ IMPORTED_TYPES = [
     "Banner",
     "Channel",
     "Newsletter",
+    "NewsletterFolder",
     "CorsiStudio",
     "AgendaEventi",
     "AgendaEvento",
@@ -127,6 +129,7 @@ ALLOWED_TYPES = [
     "Banner",
     "Channel",
     "Newsletter",
+    "NewsletterFolder",
     "CorsiStudio",
     "AgendaEventi",
     "AgendaEvento",
@@ -207,6 +210,14 @@ class CustomImportContent(ImportContent):
             logger.info(msg)
 
     def global_dict_hook(self, item):
+
+        # Folder marked INewsletterFolder -> NewsletterFolder CT
+        markers = item.get(MARKER_INTERFACES_KEY) or []
+        if item["@type"] == "Folder" and NEWSLETTER_FOLDER_MARKER in markers:
+            item["@type"] = "NewsletterFolder"
+            item[MARKER_INTERFACES_KEY] = [m for m in markers if m != NEWSLETTER_FOLDER_MARKER]
+            # the FTI filters to Newsletter; old per-folder constrains are obsolete
+            item.pop("exportimport.constrains", None)
 
         if item["@type"] in PORTAL_TYPE_MAPPING:
             item["@type"] = PORTAL_TYPE_MAPPING[item["@type"]]
