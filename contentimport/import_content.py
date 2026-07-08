@@ -19,6 +19,7 @@ from plone.namedfile.interfaces import INamedBlobImageField, INamedFileField
 from plone.tiles.data import ANNOTATIONS_KEY_PREFIX
 from plone.tiles.interfaces import ITileType
 from unibo.dipartimenti.behaviors.languagefolder import FooterLink, Tag
+from unibo.dipartimenti.fields.automaticsummary import IAutomaticSummaryField
 from unibo.tiles.browser.multiobject import TileObject
 from zope.annotation.interfaces import IAnnotations
 from zope.component import getUtilitiesFor
@@ -26,6 +27,8 @@ from zope.dottedname.resolve import resolve
 from zope.interface import alsoProvides
 from zope.schema import getFieldsInOrder
 from zope.schema.interfaces import IDate, IDatetime
+
+from contentimport.deserializers import _normalize_items
 
 logger = logging.getLogger(__name__)
 MARKER_INTERFACES_KEY = "exportimport.marker_interfaces"
@@ -320,11 +323,14 @@ class CustomImportContent(ImportContent):
         file_fields = defaultdict(set)
         datetime_fields = defaultdict(set)
         date_fields = defaultdict(set)
+        autosummary_fields = defaultdict(set)
         for tile_name, tile_type_util in getUtilitiesFor(ITileType):
             if not tile_type_util.schema:
                 continue
             for fname, fld in getFieldsInOrder(tile_type_util.schema):
-                if IRichText.providedBy(fld):
+                if IAutomaticSummaryField.providedBy(fld):
+                    autosummary_fields[tile_name].add(fname)
+                elif IRichText.providedBy(fld):
                     richtext_fields[tile_name].add(fname)
                 elif INamedBlobImageField.providedBy(fld):
                     image_fields[tile_name].add(fname)
@@ -343,6 +349,8 @@ class CustomImportContent(ImportContent):
             for key, value in tile_data.items():
                 if key == "objects_dict":
                     restored[key] = self._import_objects_dict(value, obj)
+                elif key in autosummary_fields.get(tile_type_name, set()):
+                    restored[key] = self._restore_autosummary(value)
                 elif key in richtext_fields.get(tile_type_name, set()):
                     if value is not None and not IRichTextValue.providedBy(value):
                         restored[key] = RichTextValue(value, "text/html", "text/x-html-safe")
@@ -431,6 +439,17 @@ class CustomImportContent(ImportContent):
 
             result[uid] = tileobj
         return result
+
+    def _restore_autosummary(self, value):
+        """Convert the exported {"items": [...]} dict to the JSON string the new field expects."""
+        if isinstance(value, dict):
+            items = value.get("items")
+            if not items:
+                return None
+            if isinstance(items, str):
+                return items
+            return json.dumps(_normalize_items(items))
+        return value
 
     def _parse_datetime(self, value):
         if not value:
