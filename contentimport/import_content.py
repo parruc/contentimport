@@ -41,26 +41,17 @@ SITE_SOCIALS_KEY = "_site_socials"
 # Mapping of old subobject interface dotted names (unibo.tiles.multiobject.*)
 # to the new locations in unibo.dipartimenti.tiles.*
 SUBOBJECT_TYPE_MAPPING = {
-    "unibo.tiles.multiobject.link.ILink":
-        "unibo.dipartimenti.tiles.link.ILink",
-    "unibo.tiles.multiobject.attachment.IAttachment":
-        "unibo.dipartimenti.tiles.attachment.IAttachment",
-    "unibo.tiles.multiobject.contatto.IContatto":
-        "unibo.dipartimenti.tiles.contatto.IContatto",
-    "unibo.tiles.multiobject.contatto.IContattoDSA":
-        "unibo.dipartimenti.tiles.contatto.IContattoDSA",
-    "unibo.tiles.multiobject.contatto.IStrutturaDSA":
-        "unibo.dipartimenti.tiles.contatto.IStrutturaDSA",
-    "unibo.tiles.multiobject.album.IFotoAlbum":
-        "unibo.dipartimenti.tiles.album.IFotoAlbum",
-    "unibo.tiles.multiobject.summary_links.ILink":
-        "unibo.dipartimenti.tiles.summary_links.ILink",
-    "unibo.tiles.multiobject.map_multipoint.IMapPosition":
-        "unibo.dipartimenti.tiles.map_multipoint.IMapPosition",
-    "unibo.tiles.multiobject.video.IVideo":
-        "unibo.dipartimenti.tiles.media_gallery.IVideo",
-    "unibo.tiles.multiobject.image.IImage":
-        "unibo.dipartimenti.tiles.galleria.IImage",
+    "unibo.tiles.multiobject.link.ILink": "unibo.dipartimenti.tiles.link.ILink",
+    "unibo.tiles.multiobject.attachment.IAttachment": "unibo.dipartimenti.tiles.attachment.IAttachment",
+    "unibo.tiles.multiobject.contatto.IContatto": "unibo.dipartimenti.tiles.contatto.IContatto",
+    "unibo.tiles.multiobject.contatto.IContattoDSA": "unibo.dipartimenti.tiles.contatto.IContattoDSA",
+    "unibo.tiles.multiobject.contatto.IStrutturaDSA": "unibo.dipartimenti.tiles.contatto.IStrutturaDSA",
+    "unibo.tiles.multiobject.album.IFotoAlbum": "unibo.dipartimenti.tiles.album.IFotoAlbum",
+    "unibo.tiles.multiobject.summary_links.ILink": "unibo.dipartimenti.tiles.summary_links.ILink",
+    "unibo.tiles.multiobject.map_multipoint.IMapPosition": "unibo.dipartimenti.tiles.map_multipoint.IMapPosition",
+    "unibo.tiles.multiobject.video.IVideo": "unibo.dipartimenti.tiles.media_gallery.IVideo",
+    "unibo.tiles.multiobject.image.IImage": "unibo.dipartimenti.tiles.galleria.IImage",
+    "unibo.dipartimenti.tiles.box_link.ILink": "unibo.dipartimenti.tiles.ambito.ILink",
 }
 
 # map old to new views
