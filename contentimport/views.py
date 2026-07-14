@@ -30,20 +30,6 @@ class ImportAll(BrowserView):
         cfg = getConfiguration()
         directory = Path(cfg.clienthome) / "import"
 
-        # Import groups before the content: the sharing groups
-        # (redattore.<uid>, referente.<uid>, newslettermanager.<uid>) carry
-        # the site title in their own title and export_localroles.json
-        # references their ids. export_groups.json has the
-        # @@import_members structure with an empty "members" list.
-        view = api.content.get_view("import_members", portal, request)
-        path = directory / "export_groups.json"
-        if path.exists():
-            results = view(jsonfile=path.read_text(), return_json=True)
-            logger.info(results)
-            transaction.commit()
-        else:
-            logger.info(f"Missing file: {path}")
-
         # import content
         view = api.content.get_view("import_content", portal, request)
         request.form["form.submitted"] = True
