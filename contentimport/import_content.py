@@ -462,6 +462,14 @@ class CustomImportContent(ImportContent):
 
     def dict_hook_sitecontainer(self, item):
         """Pop socials JSON string and stash it for reconstruction in global_obj_hook."""
+        # These fields are backed by PAS groups named <role>.<uid>.
+        # Deserializing them runs SharingContainer._set_role while the
+        # object still has its temporary UUID (set_uuid comes after
+        # deserialization), creating orphan groups with an empty title.
+        # Memberships come from export_groups.json, the role grants on
+        # the container from export_localroles.json.
+        for group_field in ("redattori", "referenti", "newsletter_manager"):
+            item.pop(group_field, None)
         if 'socials' in item:
             raw = item.pop('socials')
             if isinstance(raw, str):
